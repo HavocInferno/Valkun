@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+/Valkun/x64/
+*.vcxproj*
+/x64/
+/.vs/

@@ -3,8 +3,11 @@
 
 #include <iostream>
 #include <vector>
+#include <string>
 
-#include "vulkan/vulkan.h"
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW\glfw3.h>
+//#include "vulkan/vulkan.h"
 
 
 #define ASSERT_VULKAN(val)\
@@ -15,6 +18,7 @@
 VkInstance	instance; 
 VkDevice	device;
 VkResult	result;
+GLFWwindow *window;
 
 void printStats(VkPhysicalDevice &device) {
 	VkPhysicalDeviceProperties properties; 
@@ -64,10 +68,21 @@ void printStats(VkPhysicalDevice &device) {
 	}
 
 	std::cout << std::endl; 
+	delete[] familyProperties; 
 }
 
-int main()
-{
+void startGlfw() {
+	glfwInit();
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE); 
+
+	int width = 960; 
+	int height = 540; 
+	std::string title = "Valkun Sample (" + std::to_string(width) + "x" + std::to_string(height) + ")"; 
+	window = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr); 
+}
+
+void startVulkan() {
 	std::cout << "Hello Vorld!" << std::endl << std::endl;
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -81,40 +96,40 @@ int main()
 	appInfo.apiVersion = VK_API_VERSION_1_0;
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	uint32_t numOfLayers = 0; 
-	result = vkEnumerateInstanceLayerProperties(&numOfLayers, nullptr); 
+	uint32_t numOfLayers = 0;
+	result = vkEnumerateInstanceLayerProperties(&numOfLayers, nullptr);
 	std::vector<VkLayerProperties> layers = std::vector<VkLayerProperties>(numOfLayers);
 	result = vkEnumerateInstanceLayerProperties(&numOfLayers, layers.data());
 	ASSERT_VULKAN(result);
 
-	std::cout << "Number of Instance Layers: " << numOfLayers << std::endl; 
+	std::cout << "Number of Instance Layers: " << numOfLayers << std::endl;
 	for (uint32_t i = 0; i < numOfLayers; i++) {
-		std::cout << std::endl; 
-		std::cout << "Name:         " << layers[i].layerName << std::endl; 
-		std::cout << "Spec Version: " << layers[i].specVersion << std::endl; 
-		std::cout << "Impl Version: " << layers[i].implementationVersion << std::endl; 
-		std::cout << "Description:  " << layers[i].description << std::endl; 
+		std::cout << std::endl;
+		std::cout << "Name:         " << layers[i].layerName << std::endl;
+		std::cout << "Spec Version: " << layers[i].specVersion << std::endl;
+		std::cout << "Impl Version: " << layers[i].implementationVersion << std::endl;
+		std::cout << "Description:  " << layers[i].description << std::endl;
 	}
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	uint32_t numOfExtensions = 0; 
+	uint32_t numOfExtensions = 0;
 	result = vkEnumerateInstanceExtensionProperties(nullptr, &numOfExtensions, nullptr);
 	std::vector<VkExtensionProperties> extensions = std::vector<VkExtensionProperties>(numOfExtensions);
 	result = vkEnumerateInstanceExtensionProperties(nullptr, &numOfExtensions, extensions.data());
 	ASSERT_VULKAN(result);
 
-	std::cout << std::endl; 
-	std::cout << "Number of Instance Extensions: " << numOfExtensions << std::endl; 
+	std::cout << std::endl;
+	std::cout << "Number of Instance Extensions: " << numOfExtensions << std::endl;
 	for (uint32_t i = 0; i < numOfExtensions; i++) {
-		std::cout << std::endl; 
-		std::cout << "Name: " << extensions[i].extensionName << std::endl; 
-		std::cout << "Spec Version: " << extensions[i].specVersion << std::endl; 
+		std::cout << std::endl;
+		std::cout << "Name: " << extensions[i].extensionName << std::endl;
+		std::cout << "Spec Version: " << extensions[i].specVersion << std::endl;
 	}
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	const std::vector<const char*> validationLayers = {
 		"VK_LAYER_LUNARG_standard_validation"
-	}; 
+	};
 
 	VkInstanceCreateInfo instanceInfo;
 	instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -132,7 +147,7 @@ int main()
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	uint32_t numOfPhysicalDevices = 0;
 	result = vkEnumeratePhysicalDevices(instance, &numOfPhysicalDevices, nullptr);
-	std::vector<VkPhysicalDevice> physicalDevices = std::vector<VkPhysicalDevice>(numOfPhysicalDevices); 
+	std::vector<VkPhysicalDevice> physicalDevices = std::vector<VkPhysicalDevice>(numOfPhysicalDevices);
 	result = vkEnumeratePhysicalDevices(instance, &numOfPhysicalDevices, physicalDevices.data());
 	ASSERT_VULKAN(result);
 
@@ -150,9 +165,9 @@ int main()
 	deviceQueueCreateInfo.queueCount = 1; //TODO Check if this amount is valid
 	deviceQueueCreateInfo.pQueuePriorities = queuePrios;
 
-	VkPhysicalDeviceFeatures usedFeatures = {}; 
+	VkPhysicalDeviceFeatures usedFeatures = {};
 
-	VkDeviceCreateInfo deviceCreateInfo; 
+	VkDeviceCreateInfo deviceCreateInfo;
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	deviceCreateInfo.pNext = nullptr;
 	deviceCreateInfo.flags = 0;
@@ -165,19 +180,40 @@ int main()
 	deviceCreateInfo.pEnabledFeatures = &usedFeatures;
 
 	//TODO pick "best" device instead of first device
-	result = vkCreateDevice(physicalDevices[0], &deviceCreateInfo, nullptr, &device); 
-	ASSERT_VULKAN(result); 
+	result = vkCreateDevice(physicalDevices[0], &deviceCreateInfo, nullptr, &device);
+	ASSERT_VULKAN(result);
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	VkQueue queue; 
-	vkGetDeviceQueue(device, 0, 0, &queue); 
+	VkQueue queue;
+	vkGetDeviceQueue(device, 0, 0, &queue);
+}
 
+void gameLoop() {
+	while (!glfwWindowShouldClose(window)) {
+		glfwPollEvents(); 
+	}
+}
+
+void shutdownVulkan() {
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	result = vkDeviceWaitIdle(device);
 	ASSERT_VULKAN(result);
 
-	vkDestroyDevice(device, nullptr); 
-	vkDestroyInstance(instance, nullptr);  
+	vkDestroyDevice(device, nullptr);
+	vkDestroyInstance(instance, nullptr);
+}
+
+void shutdownGlfw() {
+	glfwDestroyWindow(window); 
+}
+
+int main()
+{
+	startGlfw();
+	startVulkan();
+	gameLoop();
+	shutdownVulkan();
+	shutdownGlfw();
 
 	return 0; 
 }

@@ -34,3 +34,5 @@
 *.vcxproj*
 /x64/
 /.vs/
+/build/
+/buildRelease/

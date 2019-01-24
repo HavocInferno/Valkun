@@ -16,6 +16,7 @@
 		}
 
 VkInstance	instance; 
+VkSurfaceKHR surface; 
 VkDevice	device;
 VkResult	result;
 GLFWwindow *window;
@@ -67,8 +68,46 @@ void printStats(VkPhysicalDevice &device) {
 		std::cout << "Min Image Timestap Granularity: " << width << ", " << height << ", " << depth << std::endl; 
 	}
 
+	VkSurfaceCapabilitiesKHR surfaceCapabilities; 
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &surfaceCapabilities); 
+	std::cout << "\nSurface capabilities: " << std::endl; 
+	std::cout << "\tminImageCount           " << surfaceCapabilities.minImageCount << std::endl;
+	std::cout << "\tmaxImageCount           " << surfaceCapabilities.maxImageCount << std::endl;
+	std::cout << "\tcurrentExtent           " << surfaceCapabilities.currentExtent.width << "x" << surfaceCapabilities.currentExtent.height << std::endl;
+	std::cout << "\tminImageExtent          " << surfaceCapabilities.minImageExtent.width << "x" << surfaceCapabilities.minImageExtent.height << std::endl;
+	std::cout << "\tmaxImageExtent          " << surfaceCapabilities.maxImageExtent.width << "x" << surfaceCapabilities.maxImageExtent.height << std::endl;
+	std::cout << "\tmaxImageArrayLayers     " << surfaceCapabilities.maxImageArrayLayers << std::endl;
+	std::cout << "\tsupportedTransforms     " << surfaceCapabilities.supportedTransforms << std::endl;
+	std::cout << "\tcurrentTransform        " << surfaceCapabilities.currentTransform << std::endl;
+	std::cout << "\tsupportedCompositeAlpha " << surfaceCapabilities.supportedCompositeAlpha << std::endl;
+	std::cout << "\tsupportedUsageFlags     " << surfaceCapabilities.supportedUsageFlags << std::endl;
+
+	uint32_t numFormats = 0; 
+	vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &numFormats, nullptr); 
+	VkSurfaceFormatKHR *surfaceFormats = new VkSurfaceFormatKHR[numFormats]; 
+	vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &numFormats, surfaceFormats); 
+
+	std::cout << std::endl;
+	std::cout << "Num of Formats: " << numFormats << std::endl;
+	for (int i = 0; i < numFormats; i++) {
+		std::cout << "Format: " << surfaceFormats[i].format << std::endl; 
+	}
+
+	uint32_t numPresentationModes = 0; 
+	vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &numPresentationModes, nullptr); 
+	VkPresentModeKHR *presentModes = new VkPresentModeKHR[numPresentationModes]; 
+	vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &numPresentationModes, presentModes); 
+
+	std::cout << std::endl; 
+	std::cout << "Num of Presentation Modes: " << numPresentationModes << std::endl; 
+	for (int i = 0; i < numPresentationModes; i++) {
+		std::cout << "Presentaion Mode: " << presentModes[i] << std::endl; 
+	}
+
 	std::cout << std::endl; 
 	delete[] familyProperties; 
+	delete[] surfaceFormats; 
+	delete[] presentModes; 
 }
 
 void startGlfw() {
@@ -131,6 +170,9 @@ void startVulkan() {
 		"VK_LAYER_LUNARG_standard_validation"
 	};
 
+	uint32_t numGlfwExtensions = 0;
+	auto glfwExtensions = glfwGetRequiredInstanceExtensions(&numGlfwExtensions);
+
 	VkInstanceCreateInfo instanceInfo;
 	instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	instanceInfo.pNext = nullptr;
@@ -138,11 +180,14 @@ void startVulkan() {
 	instanceInfo.pApplicationInfo = &appInfo;
 	instanceInfo.enabledLayerCount = validationLayers.size();
 	instanceInfo.ppEnabledLayerNames = validationLayers.data();
-	instanceInfo.enabledExtensionCount = 0;
-	instanceInfo.ppEnabledExtensionNames = nullptr;
+	instanceInfo.enabledExtensionCount = numGlfwExtensions;
+	instanceInfo.ppEnabledExtensionNames = glfwExtensions;
 
 	result = vkCreateInstance(&instanceInfo, nullptr, &instance);
 	ASSERT_VULKAN(result);
+
+	result = glfwCreateWindowSurface(instance, window, nullptr, &surface); 
+	ASSERT_VULKAN(result); 
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	uint32_t numOfPhysicalDevices = 0;
@@ -200,6 +245,7 @@ void shutdownVulkan() {
 	ASSERT_VULKAN(result);
 
 	vkDestroyDevice(device, nullptr);
+	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyInstance(instance, nullptr);
 }
 

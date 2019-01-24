@@ -14,12 +14,18 @@
 		if(val != VK_SUCCESS) {\
 			__debugbreak();\
 		}
+VkResult	result;
 
 VkInstance	instance; 
 VkSurfaceKHR surface; 
 VkDevice	device;
-VkResult	result;
+VkSwapchainKHR swapchain; 
+VkImageView *imageViews;
+uint32_t numImagesInSwapchain = 0;
+
 GLFWwindow *window;
+const uint32_t WIDTH = 960;
+const uint32_t HEIGHT = 540;
 
 void printStats(VkPhysicalDevice &device) {
 	VkPhysicalDeviceProperties properties; 
@@ -115,10 +121,8 @@ void startGlfw() {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE); 
 
-	int width = 960; 
-	int height = 540; 
-	std::string title = "Valkun Sample (" + std::to_string(width) + "x" + std::to_string(height) + ")"; 
-	window = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr); 
+	std::string title = "Valkun Sample (" + std::to_string(WIDTH) + "x" + std::to_string(HEIGHT) + ")";
+	window = glfwCreateWindow(WIDTH, HEIGHT, title.c_str(), nullptr, nullptr);
 }
 
 void startVulkan() {
@@ -212,6 +216,10 @@ void startVulkan() {
 
 	VkPhysicalDeviceFeatures usedFeatures = {};
 
+	const std::vector<const char*> deviceExtensions = {
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME
+	};
+
 	VkDeviceCreateInfo deviceCreateInfo;
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	deviceCreateInfo.pNext = nullptr;
@@ -220,8 +228,8 @@ void startVulkan() {
 	deviceCreateInfo.pQueueCreateInfos = &deviceQueueCreateInfo;
 	deviceCreateInfo.enabledLayerCount = 0;
 	deviceCreateInfo.ppEnabledLayerNames = nullptr;
-	deviceCreateInfo.enabledExtensionCount = 0;
-	deviceCreateInfo.ppEnabledExtensionNames = nullptr;
+	deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
+	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 	deviceCreateInfo.pEnabledFeatures = &usedFeatures;
 
 	//TODO pick "best" device instead of first device
@@ -231,6 +239,68 @@ void startVulkan() {
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	VkQueue queue;
 	vkGetDeviceQueue(device, 0, 0, &queue);
+
+	VkBool32 surfaceSupport = false; 
+	result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[0], deviceQueueCreateInfo.queueFamilyIndex, surface, &surfaceSupport);
+	ASSERT_VULKAN(result); 
+
+	if (!surfaceSupport) {
+		std::cerr << "Surface not supported!" << std::endl; 
+		__debugbreak(); 
+	}
+
+	VkSwapchainCreateInfoKHR swapchainCreateInfo; 
+	swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchainCreateInfo.pNext = nullptr;
+	swapchainCreateInfo.flags = 0;
+	swapchainCreateInfo.surface = surface;
+	swapchainCreateInfo.minImageCount = 3; //TODO check if valid
+	swapchainCreateInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM; //TODO check if valid
+	swapchainCreateInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR; //TODO check if valid
+	swapchainCreateInfo.imageExtent = VkExtent2D{ WIDTH, HEIGHT };
+	swapchainCreateInfo.imageArrayLayers = 1;
+	swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; //TODO check if valid
+	swapchainCreateInfo.queueFamilyIndexCount = 0;
+	swapchainCreateInfo.pQueueFamilyIndices = nullptr;
+	swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; //TODO check for best
+	swapchainCreateInfo.clipped = VK_TRUE;
+	swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+
+	result = vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &swapchain); 
+	ASSERT_VULKAN(result); 
+
+	vkGetSwapchainImagesKHR(device, swapchain, &numImagesInSwapchain, nullptr); 
+	VkImage *swapchainImages = new VkImage[numImagesInSwapchain];
+	result = vkGetSwapchainImagesKHR(device, swapchain, &numImagesInSwapchain, swapchainImages); 
+	ASSERT_VULKAN(result); 
+
+	imageViews = new VkImageView[numImagesInSwapchain]; 
+	for (int i = 0; i < numImagesInSwapchain; i++) {
+		VkImageViewCreateInfo imageViewCreateInfo;
+		imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		imageViewCreateInfo.pNext = nullptr;
+		imageViewCreateInfo.flags = 0;
+		imageViewCreateInfo.image = swapchainImages[i];
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		imageViewCreateInfo.format = VK_FORMAT_B8G8R8A8_UNORM; //TODO check if valid
+		imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+		imageViewCreateInfo.subresourceRange.levelCount = 1;
+		imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+		imageViewCreateInfo.subresourceRange.layerCount = 1; //VR relevant!
+
+		result = vkCreateImageView(device, &imageViewCreateInfo, nullptr, &imageViews[i]); 
+		ASSERT_VULKAN(result); 
+	}
+	
+	delete[] swapchainImages; 
 }
 
 void gameLoop() {
@@ -240,10 +310,14 @@ void gameLoop() {
 }
 
 void shutdownVulkan() {
-	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	result = vkDeviceWaitIdle(device);
 	ASSERT_VULKAN(result);
 
+	for (int i = 0; i < numImagesInSwapchain; i++) {
+		vkDestroyImageView(device, imageViews[i], nullptr);
+	}
+	delete[] imageViews; 
+	vkDestroySwapchainKHR(device, swapchain, nullptr); 
 	vkDestroyDevice(device, nullptr);
 	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyInstance(instance, nullptr);
@@ -263,14 +337,3 @@ int main()
 
 	return 0; 
 }
-
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file

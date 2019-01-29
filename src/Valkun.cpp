@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <fstream>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW\glfw3.h>
@@ -21,6 +22,8 @@ VkSurfaceKHR surface;
 VkDevice	device;
 VkSwapchainKHR swapchain; 
 VkImageView *imageViews;
+VkShaderModule shaderModuleVert;
+VkShaderModule shaderModuleFrag;
 uint32_t numImagesInSwapchain = 0;
 
 GLFWwindow *window;
@@ -116,6 +119,22 @@ void printStats(VkPhysicalDevice &device) {
 	delete[] presentModes; 
 }
 
+std::vector<char> readFile(const std::string &filename) {
+	std::ifstream file(filename, std::ios::binary | std::ios::ate); 
+
+	if (file) {
+		size_t fileSize = (size_t)file.tellg(); 
+		std::vector<char> fileBuffer(fileSize); 
+		file.seekg(0); 
+		file.read(fileBuffer.data(), fileSize); 
+		file.close(); 
+		return fileBuffer;
+	}
+	else {
+		throw std::runtime_error("Failed to open file " + filename); 
+	}
+}
+
 void startGlfw() {
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -123,6 +142,18 @@ void startGlfw() {
 
 	std::string title = "Valkun Sample (" + std::to_string(WIDTH) + "x" + std::to_string(HEIGHT) + ")";
 	window = glfwCreateWindow(WIDTH, HEIGHT, title.c_str(), nullptr, nullptr);
+}
+
+void createShaderModule(const std::vector<char>& code, VkShaderModule *shaderModule) {
+	VkShaderModuleCreateInfo shaderCreateInfo;
+	shaderCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	shaderCreateInfo.pNext = nullptr;
+	shaderCreateInfo.flags = 0;
+	shaderCreateInfo.codeSize = code.size();
+	shaderCreateInfo.pCode = (uint32_t*)code.data();
+
+	VkResult result = vkCreateShaderModule(device, &shaderCreateInfo, nullptr, shaderModule); 
+	ASSERT_VULKAN(result); 
 }
 
 void startVulkan() {
@@ -299,6 +330,32 @@ void startVulkan() {
 		result = vkCreateImageView(device, &imageViewCreateInfo, nullptr, &imageViews[i]); 
 		ASSERT_VULKAN(result); 
 	}
+
+	auto shaderCodeVert = readFile("Resources/vert.spv"); 
+	auto shaderCodeFrag = readFile("Resources/frag.spv");
+
+	createShaderModule(shaderCodeVert, &shaderModuleVert);
+	createShaderModule(shaderCodeFrag, &shaderModuleFrag);
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfoVert;
+	shaderStageCreateInfoVert.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageCreateInfoVert.pNext = nullptr;
+	shaderStageCreateInfoVert.flags = 0;
+	shaderStageCreateInfoVert.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	shaderStageCreateInfoVert.module = shaderModuleVert;
+	shaderStageCreateInfoVert.pName = "main";
+	shaderStageCreateInfoVert.pSpecializationInfo = nullptr;
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfoFrag;
+	shaderStageCreateInfoFrag.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageCreateInfoFrag.pNext = nullptr;
+	shaderStageCreateInfoFrag.flags = 0;
+	shaderStageCreateInfoFrag.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	shaderStageCreateInfoFrag.module = shaderModuleFrag;
+	shaderStageCreateInfoFrag.pName = "main";
+	shaderStageCreateInfoFrag.pSpecializationInfo = nullptr;
+
+	VkPipelineShaderStageCreateInfo shaderStages[] = { shaderStageCreateInfoVert, shaderStageCreateInfoFrag };
 	
 	delete[] swapchainImages; 
 }
@@ -317,6 +374,8 @@ void shutdownVulkan() {
 		vkDestroyImageView(device, imageViews[i], nullptr);
 	}
 	delete[] imageViews; 
+	vkDestroyShaderModule(device, shaderModuleVert, nullptr);
+	vkDestroyShaderModule(device, shaderModuleFrag, nullptr);
 	vkDestroySwapchainKHR(device, swapchain, nullptr); 
 	vkDestroyDevice(device, nullptr);
 	vkDestroySurfaceKHR(instance, surface, nullptr);

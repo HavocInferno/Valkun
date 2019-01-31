@@ -22,13 +22,18 @@ VkSurfaceKHR surface;
 VkDevice	device;
 VkSwapchainKHR swapchain; 
 VkImageView *imageViews;
+VkFramebuffer *framebuffers; 
 VkShaderModule shaderModuleVert;
 VkShaderModule shaderModuleFrag;
+VkPipelineLayout pipelineLayout;
+VkRenderPass renderPass; 
+VkPipeline pipeline;
 uint32_t numImagesInSwapchain = 0;
 
 GLFWwindow *window;
 const uint32_t WIDTH = 960;
 const uint32_t HEIGHT = 540;
+const VkFormat ourFormat = VK_FORMAT_B8G8R8A8_UNORM; //check if valid
 
 void printStats(VkPhysicalDevice &device) {
 	VkPhysicalDeviceProperties properties; 
@@ -286,7 +291,7 @@ void startVulkan() {
 	swapchainCreateInfo.flags = 0;
 	swapchainCreateInfo.surface = surface;
 	swapchainCreateInfo.minImageCount = 3; //TODO check if valid
-	swapchainCreateInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM; //TODO check if valid
+	swapchainCreateInfo.imageFormat = ourFormat; //TODO check if valid
 	swapchainCreateInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR; //TODO check if valid
 	swapchainCreateInfo.imageExtent = VkExtent2D{ WIDTH, HEIGHT };
 	swapchainCreateInfo.imageArrayLayers = 1;
@@ -316,7 +321,7 @@ void startVulkan() {
 		imageViewCreateInfo.flags = 0;
 		imageViewCreateInfo.image = swapchainImages[i];
 		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		imageViewCreateInfo.format = VK_FORMAT_B8G8R8A8_UNORM; //TODO check if valid
+		imageViewCreateInfo.format = ourFormat; //TODO check if valid
 		imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 		imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
 		imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -357,6 +362,186 @@ void startVulkan() {
 
 	VkPipelineShaderStageCreateInfo shaderStages[] = { shaderStageCreateInfoVert, shaderStageCreateInfoFrag };
 	
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo; 
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.pNext = nullptr;
+	vertexInputCreateInfo.flags = 0;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 0;
+	vertexInputCreateInfo.pVertexBindingDescriptions = nullptr;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = 0;
+	vertexInputCreateInfo.pVertexAttributeDescriptions = nullptr;
+
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo;
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.pNext = nullptr;
+	inputAssemblyCreateInfo.flags = 0;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport; 
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = WIDTH;
+	viewport.height = HEIGHT;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	VkRect2D scissor;
+	scissor.offset = { 0, 0 };
+	scissor.extent = { WIDTH, HEIGHT };
+
+	VkPipelineViewportStateCreateInfo viewportStateCreateInfo;
+	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCreateInfo.pNext = nullptr;
+	viewportStateCreateInfo.flags = 0;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.pViewports = &viewport;
+	viewportStateCreateInfo.scissorCount = 1;
+	viewportStateCreateInfo.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterizationCreateInfo; 
+	rasterizationCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationCreateInfo.pNext = nullptr;
+	rasterizationCreateInfo.flags = 0;
+	rasterizationCreateInfo.depthClampEnable = VK_FALSE;
+	rasterizationCreateInfo.rasterizerDiscardEnable = VK_FALSE;
+	rasterizationCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizationCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizationCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizationCreateInfo.depthBiasEnable = VK_FALSE;
+	rasterizationCreateInfo.depthBiasConstantFactor = 0.0f;
+	rasterizationCreateInfo.depthBiasClamp = 0.0f;
+	rasterizationCreateInfo.depthBiasSlopeFactor = 0.0f;
+	rasterizationCreateInfo.lineWidth = 1.0f;
+
+	VkPipelineMultisampleStateCreateInfo multisampleCreateInfo; 
+	multisampleCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampleCreateInfo.pNext = nullptr;
+	multisampleCreateInfo.flags = 0;
+	multisampleCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisampleCreateInfo.sampleShadingEnable = VK_FALSE;
+	multisampleCreateInfo.minSampleShading = 1.0f;
+	multisampleCreateInfo.pSampleMask = nullptr;
+	multisampleCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisampleCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment;
+	colorBlendAttachment.blendEnable = VK_TRUE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	VkPipelineColorBlendStateCreateInfo colorBlendCreateInfo;
+	colorBlendCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendCreateInfo.pNext = nullptr;
+	colorBlendCreateInfo.flags = 0;
+	colorBlendCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendCreateInfo.logicOp = VK_LOGIC_OP_NO_OP;
+	colorBlendCreateInfo.attachmentCount = 1;
+	colorBlendCreateInfo.pAttachments = &colorBlendAttachment;
+	colorBlendCreateInfo.blendConstants[0] = 0.0f;
+	colorBlendCreateInfo.blendConstants[1] = 0.0f;
+	colorBlendCreateInfo.blendConstants[2] = 0.0f;
+	colorBlendCreateInfo.blendConstants[3] = 0.0f;
+
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.pNext = nullptr;
+	pipelineLayoutCreateInfo.flags = 0;
+	pipelineLayoutCreateInfo.setLayoutCount = 0;
+	pipelineLayoutCreateInfo.pSetLayouts = nullptr;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	result = vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout); 
+	ASSERT_VULKAN(result);
+
+	VkAttachmentDescription attachmentDescription;
+	attachmentDescription.flags = 0;
+	attachmentDescription.format = ourFormat;
+	attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
+	attachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+	VkAttachmentReference attachmentReference;
+	attachmentReference.attachment = 0;
+	attachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpassDescription; 
+	subpassDescription.flags = 0;
+	subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpassDescription.inputAttachmentCount = 0;
+	subpassDescription.pInputAttachments = nullptr;
+	subpassDescription.colorAttachmentCount = 1;
+	subpassDescription.pColorAttachments = &attachmentReference;
+	subpassDescription.pResolveAttachments = nullptr;
+	subpassDescription.pDepthStencilAttachment = nullptr;
+	subpassDescription.preserveAttachmentCount = 0;
+	subpassDescription.pPreserveAttachments = nullptr;
+
+	VkRenderPassCreateInfo renderPassCreateInfo; 
+	renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassCreateInfo.pNext = nullptr;
+	renderPassCreateInfo.flags = 0;
+	renderPassCreateInfo.attachmentCount = 1;
+	renderPassCreateInfo.pAttachments = &attachmentDescription;
+	renderPassCreateInfo.subpassCount = 1;
+	renderPassCreateInfo.pSubpasses = &subpassDescription;
+	renderPassCreateInfo.dependencyCount = 0;
+	renderPassCreateInfo.pDependencies = nullptr;
+
+	result = vkCreateRenderPass(device, &renderPassCreateInfo, nullptr, &renderPass); 
+	ASSERT_VULKAN(result);
+
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo;
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.pNext = nullptr;
+	pipelineCreateInfo.flags = 0;
+	pipelineCreateInfo.stageCount = 2;
+	pipelineCreateInfo.pStages = shaderStages;
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pTessellationState = nullptr;
+	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisampleCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = nullptr;
+	pipelineCreateInfo.pColorBlendState = &colorBlendCreateInfo;
+	pipelineCreateInfo.pDynamicState = nullptr;
+	pipelineCreateInfo.layout = pipelineLayout;
+	pipelineCreateInfo.renderPass = renderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = -1;
+
+	result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &pipeline);
+	ASSERT_VULKAN(result);
+
+	framebuffers = new VkFramebuffer[numImagesInSwapchain];
+	for (size_t i = 0; i < numImagesInSwapchain; i++) {
+		VkFramebufferCreateInfo framebufferCreateInfo; 
+		framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		framebufferCreateInfo.pNext = nullptr;
+		framebufferCreateInfo.flags = 0;
+		framebufferCreateInfo.renderPass = renderPass;
+		framebufferCreateInfo.attachmentCount = 1;
+		framebufferCreateInfo.pAttachments = &(imageViews[i]);
+		framebufferCreateInfo.width = WIDTH;
+		framebufferCreateInfo.height = HEIGHT;
+		framebufferCreateInfo.layers = 1;
+
+		result = vkCreateFramebuffer(device, &framebufferCreateInfo, nullptr, &(framebuffers[i]));
+		ASSERT_VULKAN(result); 
+	}
+
 	delete[] swapchainImages; 
 }
 
@@ -367,13 +552,19 @@ void gameLoop() {
 }
 
 void shutdownVulkan() {
-	result = vkDeviceWaitIdle(device);
-	ASSERT_VULKAN(result);
+	vkDeviceWaitIdle(device);
+	for (size_t i = 0; i < numImagesInSwapchain; i++) {
+		vkDestroyFramebuffer(device, framebuffers[i], nullptr);
+	}
+	delete[] framebuffers; 
 
+	vkDestroyPipeline(device, pipeline, nullptr); 
+	vkDestroyRenderPass(device, renderPass, nullptr); 
 	for (int i = 0; i < numImagesInSwapchain; i++) {
 		vkDestroyImageView(device, imageViews[i], nullptr);
 	}
 	delete[] imageViews; 
+	vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 	vkDestroyShaderModule(device, shaderModuleVert, nullptr);
 	vkDestroyShaderModule(device, shaderModuleFrag, nullptr);
 	vkDestroySwapchainKHR(device, swapchain, nullptr); 

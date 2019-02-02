@@ -15,12 +15,16 @@ add_executable( Valkun ${CMAKE_CURRENT_SOURCE_DIR}/src/Valkun.cpp ${RES_FILES} $
 
 ####################################################################################
 
+set( GLFW_DIR C:/software/c++/glfw-3.2.1.bin.WIN64 )
+set( VULKAN_DIR C:/VulkanSDK/1.1.85.0 )
+
 include_directories( 
 	${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
-include_directories( C:/VulkanSDK/1.1.85.0/Include )
-include_directories( C:/software/c++/glfw-3.2.1.bin.WIN64/include )
+include_directories( ${VULKAN_DIR}/Include )
+include_directories( ${GLFW_DIR}/include )
+include_directories( ${VULKAN_DIR}/Third-Party/Include/glm )
 
 ####################################################################################
 
@@ -28,10 +32,10 @@ include_directories( C:/software/c++/glfw-3.2.1.bin.WIN64/include )
 
 ####################################################################################
 
-set( GLFW_LIB C:/software/c++/glfw-3.2.1.bin.WIN64/lib-vc2015 )
+set( GLFW_LIB ${GLFW_DIR}/lib-vc2015 )
 target_link_libraries( Valkun ${GLFW_LIB}/glfw3.lib )
 
-set( VULKAN_LIB C:/VulkanSDK/1.1.85.0/Lib )
+set( VULKAN_LIB ${VULKAN_DIR}/Lib )
 target_link_libraries( Valkun ${VULKAN_LIB}/vulkan-1.lib )
 
 ####################################################################################

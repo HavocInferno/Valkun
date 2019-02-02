@@ -39,6 +39,7 @@ VkCommandBuffer* commandBuffers;
 VkSemaphore semaphoreImageAvailable; 
 VkSemaphore semaphoreRenderingDone;
 VkQueue queue;
+VkBuffer vertexBuffer;
 uint32_t numImagesInSwapchain = 0;
 
 GLFWwindow *window;
@@ -57,6 +58,31 @@ public:
 	Vertex(glm::vec2 pos, glm::vec3 color)
 		: pos(pos), color(color)
 	{}
+
+	static VkVertexInputBindingDescription getBindingDescription() {
+		VkVertexInputBindingDescription vertexInputBindingDescription;
+
+		vertexInputBindingDescription.binding = 0;
+		vertexInputBindingDescription.stride = sizeof(Vertex);
+		vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+		return vertexInputBindingDescription;
+	}
+
+	static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions() {
+		std::vector<VkVertexInputAttributeDescription> vertexInputAttributeDescriptions(2);
+		vertexInputAttributeDescriptions[0].location = 0;
+		vertexInputAttributeDescriptions[0].binding = 0;
+		vertexInputAttributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+		vertexInputAttributeDescriptions[0].offset = offsetof(Vertex, pos);
+
+		vertexInputAttributeDescriptions[1].location = 1;
+		vertexInputAttributeDescriptions[1].binding = 0;
+		vertexInputAttributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+		vertexInputAttributeDescriptions[1].offset = offsetof(Vertex, color);
+
+		return vertexInputAttributeDescriptions;
+	}
 };
 
 std::vector<Vertex> vertices = {
@@ -460,14 +486,17 @@ void createPipeline() {
 
 	VkPipelineShaderStageCreateInfo shaderStages[] = { shaderStageCreateInfoVert, shaderStageCreateInfoFrag };
 
+	auto vertexBindingDescription = Vertex::getBindingDescription();
+	auto vertexAttributeDescriptions = Vertex::getAttributeDescriptions(); 
+
 	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo;
 	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInputCreateInfo.pNext = nullptr;
 	vertexInputCreateInfo.flags = 0;
-	vertexInputCreateInfo.vertexBindingDescriptionCount = 0;
-	vertexInputCreateInfo.pVertexBindingDescriptions = nullptr;
-	vertexInputCreateInfo.vertexAttributeDescriptionCount = 0;
-	vertexInputCreateInfo.pVertexAttributeDescriptions = nullptr;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &vertexBindingDescription;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = vertexAttributeDescriptions.size();
+	vertexInputCreateInfo.pVertexAttributeDescriptions = vertexAttributeDescriptions.data();
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo;
 	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -638,6 +667,23 @@ void createCommandBuffers() {
 	ASSERT_VULKAN(result);
 }
 
+void createVertexBuffer() {
+	VkBufferCreateInfo bufferCreateInfo;
+	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCreateInfo.pNext = nullptr;
+	bufferCreateInfo.flags = 0;
+	bufferCreateInfo.size = sizeof(Vertex) * vertices.size();
+	bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	bufferCreateInfo.queueFamilyIndexCount = 0;
+	bufferCreateInfo.pQueueFamilyIndices = nullptr; 
+
+	VkResult result = vkCreateBuffer(device, &bufferCreateInfo, nullptr, &vertexBuffer); 
+	ASSERT_VULKAN(result); 
+
+
+}
+
 void recordCommandBuffers() {
 	VkCommandBufferBeginInfo commandBufferBeginInfo;
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -786,6 +832,7 @@ void startVulkan() {
 	createFramebuffers(); 
 	createCommandPool();
 	createCommandBuffers();
+	createVertexBuffer();
 	recordCommandBuffers();
 	createSemaphores(); 
 }
@@ -832,6 +879,8 @@ void gameLoop() {
 
 void shutdownVulkan() {
 	vkDeviceWaitIdle(device);
+
+	vkDestroyBuffer(device, vertexBuffer, nullptr); 
 
 	vkDestroySemaphore(device, semaphoreImageAvailable, nullptr);
 	vkDestroySemaphore(device, semaphoreRenderingDone, nullptr); 

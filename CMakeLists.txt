@@ -24,7 +24,7 @@ include_directories(
 )
 include_directories( ${VULKAN_DIR}/Include )
 include_directories( ${GLFW_DIR}/include )
-include_directories( ${VULKAN_DIR}/Third-Party/Include/glm )
+include_directories( ${VULKAN_DIR}/Third-Party/Include )
 
 ####################################################################################
 

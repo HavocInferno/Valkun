@@ -964,15 +964,15 @@ void recreateSwapchain() {
 	}
 	delete[] framebuffers;
 
-	//vkDestroyPipeline(device, pipeline, nullptr);
+	vkDestroyPipeline(device, pipeline, nullptr);
 	vkDestroyRenderPass(device, renderPass, nullptr);
 	for (int i = 0; i < numImagesInSwapchain; i++) {
 		vkDestroyImageView(device, imageViews[i], nullptr);
 	}
 	delete[] imageViews;
-	//vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-	//vkDestroyShaderModule(device, shaderModuleVert, nullptr);
-	//vkDestroyShaderModule(device, shaderModuleFrag, nullptr);
+	vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+	vkDestroyShaderModule(device, shaderModuleVert, nullptr);
+	vkDestroyShaderModule(device, shaderModuleFrag, nullptr);
 
 	//create a new swapchain
 	VkSwapchainKHR oldSwapchain = swapchain;

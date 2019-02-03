@@ -6,8 +6,10 @@ cmake_minimum_required (VERSION 3.0 )
 
 file(GLOB_RECURSE RES_FILES *.frag *.vert *.glsl)
 file(GLOB_RECURSE BAT_FILES *.bat)
+file(GLOB_RECURSE CXX_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
+file(GLOB_RECURSE CXX_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h)
 
-add_executable( Valkun ${CMAKE_CURRENT_SOURCE_DIR}/src/Valkun.cpp ${RES_FILES} ${BAT_FILES})
+add_executable( Valkun ${CXX_FILES} ${CXX_HEADERS} ${RES_FILES} ${BAT_FILES})
 
 ####################################################################################
 
@@ -17,6 +19,7 @@ add_executable( Valkun ${CMAKE_CURRENT_SOURCE_DIR}/src/Valkun.cpp ${RES_FILES} $
 
 set( GLFW_DIR C:/software/c++/glfw-3.2.1.bin.WIN64 )
 set( VULKAN_DIR C:/VulkanSDK/1.1.85.0 )
+set( STB_DIR C:/software/c++/stb )
 
 include_directories( 
 	${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -25,6 +28,8 @@ include_directories(
 include_directories( ${VULKAN_DIR}/Include )
 include_directories( ${GLFW_DIR}/include )
 include_directories( ${VULKAN_DIR}/Third-Party/Include )
+include_directories( ${STB_DIR} )
+
 
 ####################################################################################
 
@@ -46,5 +51,6 @@ add_custom_command(TARGET ${PROJECT_NAME}
     COMMAND call runCompiler.bat
 	COMMAND ${CMAKE_COMMAND} -E copy vert.spv ${PROJECT_BINARY_DIR}/Resources/.
 	COMMAND ${CMAKE_COMMAND} -E copy frag.spv ${PROJECT_BINARY_DIR}/Resources/.
+	COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/Resources ${PROJECT_BINARY_DIR}/Resources
 	VERBATIM
 )

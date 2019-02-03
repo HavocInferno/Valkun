@@ -62,9 +62,10 @@ class Vertex {
 public: 
 	glm::vec2 pos;
 	glm::vec3 color;
+	glm::vec2 uvCoord;
 
-	Vertex(glm::vec2 pos, glm::vec3 color)
-		: pos(pos), color(color)
+	Vertex(glm::vec2 pos, glm::vec3 color, glm::vec2 uvCoord)
+		: pos(pos), color(color), uvCoord(uvCoord)
 	{}
 
 	static VkVertexInputBindingDescription getBindingDescription() {
@@ -78,7 +79,7 @@ public:
 	}
 
 	static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions() {
-		std::vector<VkVertexInputAttributeDescription> vertexInputAttributeDescriptions(2);
+		std::vector<VkVertexInputAttributeDescription> vertexInputAttributeDescriptions(3);
 		vertexInputAttributeDescriptions[0].location = 0;
 		vertexInputAttributeDescriptions[0].binding = 0;
 		vertexInputAttributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
@@ -89,15 +90,20 @@ public:
 		vertexInputAttributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
 		vertexInputAttributeDescriptions[1].offset = offsetof(Vertex, color);
 
+		vertexInputAttributeDescriptions[2].location = 2;
+		vertexInputAttributeDescriptions[2].binding = 0;
+		vertexInputAttributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+		vertexInputAttributeDescriptions[2].offset = offsetof(Vertex, uvCoord);
+
 		return vertexInputAttributeDescriptions;
 	}
 };
 
 std::vector<Vertex> vertices = {
-	Vertex({ -0.5f, -0.5f }, { 1.0f, 0.0f, 1.0f }),
-	Vertex({  0.5f,  0.5f }, { 1.0f, 1.0f, 0.0f }),
-	Vertex({ -0.5f,  0.5f }, { 0.0f, 1.0f, 1.0f }),
-	Vertex({  0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }),
+	Vertex({ -0.5f, -0.5f }, { 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f }),
+	Vertex({  0.5f,  0.5f }, { 1.0f, 1.0f, 0.0f }, { 1.0f, 1.0f }),
+	Vertex({ -0.5f,  0.5f }, { 0.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }),
+	Vertex({  0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }),
 };
 
 std::vector<uint32_t> indices = {
@@ -326,6 +332,7 @@ void createLogicalDevice() {
 	deviceQueueCreateInfo.pQueuePriorities = queuePrios;
 
 	VkPhysicalDeviceFeatures usedFeatures = {};
+	usedFeatures.samplerAnisotropy = VK_TRUE;
 
 	const std::vector<const char*> deviceExtensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
@@ -481,12 +488,23 @@ void createDescriptorSetLayout()
 	descriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	descriptorSetLayoutBinding.pImmutableSamplers = nullptr;
 
+	VkDescriptorSetLayoutBinding samplerDescriptorSetLayoutBinding;
+	samplerDescriptorSetLayoutBinding.binding = 1; 
+	samplerDescriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	samplerDescriptorSetLayoutBinding.descriptorCount = 1;
+	samplerDescriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	samplerDescriptorSetLayoutBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> descriptorSets;
+	descriptorSets.push_back(descriptorSetLayoutBinding);
+	descriptorSets.push_back(samplerDescriptorSetLayoutBinding); 
+
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
 	descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	descriptorSetLayoutCreateInfo.pNext = nullptr;
 	descriptorSetLayoutCreateInfo.flags = 0;
-	descriptorSetLayoutCreateInfo.bindingCount = 1;
-	descriptorSetLayoutCreateInfo.pBindings = &descriptorSetLayoutBinding;
+	descriptorSetLayoutCreateInfo.bindingCount = descriptorSets.size();
+	descriptorSetLayoutCreateInfo.pBindings = descriptorSets.data();
 
 	VkResult result = vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayout);
 	ASSERT_VULKAN(result);
@@ -751,10 +769,7 @@ void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size) {
 
 void loadTexture() {
 	devTex.load("Resources/Textures/tex.png");
-	std::cout << devTex.getWidth() << std::endl; 
-	std::cout << devTex.getHeight() << std::endl;
-	std::cout << devTex.getChannels() << std::endl;
-	std::cout << devTex.getSizeInBytes() << std::endl;
+	devTex.upload(device, physicalDevices[0], commandPool, queue); 
 }
 
 void createVertexBuffer() {
@@ -775,13 +790,21 @@ void createDescriptorPool() {
 	descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	descriptorPoolSize.descriptorCount = 1;
 
+	VkDescriptorPoolSize samplerPoolSize;
+	samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	samplerPoolSize.descriptorCount = 1;
+
+	std::vector<VkDescriptorPoolSize> descriptorPoolSizes;
+	descriptorPoolSizes.push_back(descriptorPoolSize);
+	descriptorPoolSizes.push_back(samplerPoolSize); 
+
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo;
 	descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	descriptorPoolCreateInfo.pNext = nullptr;
 	descriptorPoolCreateInfo.flags = 0;
 	descriptorPoolCreateInfo.maxSets = 1;
-	descriptorPoolCreateInfo.poolSizeCount = 1;
-	descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
+	descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+	descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
 
 	VkResult result = vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool);
 	ASSERT_VULKAN(result); 
@@ -815,7 +838,28 @@ void createDescriptorSet() {
 	descriptorWrite.pBufferInfo = &descriptorBufferInfo;
 	descriptorWrite.pTexelBufferView = nullptr;
 
-	vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr); 
+	VkDescriptorImageInfo descriptorImageInfo;
+	descriptorImageInfo.sampler = devTex.getSampler();
+	descriptorImageInfo.imageView = devTex.getImageView();
+	descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkWriteDescriptorSet descriptorSampler;
+	descriptorSampler.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorSampler.pNext = nullptr;
+	descriptorSampler.dstSet = descriptorSet;
+	descriptorSampler.dstBinding = 1;
+	descriptorSampler.dstArrayElement = 0;
+	descriptorSampler.descriptorCount = 1;
+	descriptorSampler.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorSampler.pImageInfo = &descriptorImageInfo;
+	descriptorSampler.pBufferInfo = nullptr;
+	descriptorSampler.pTexelBufferView = nullptr;
+
+	std::vector<VkWriteDescriptorSet> writeDescriptorSets;
+	writeDescriptorSets.push_back(descriptorWrite);
+	writeDescriptorSets.push_back(descriptorSampler);
+
+	vkUpdateDescriptorSets(device, writeDescriptorSets.size(), writeDescriptorSets.data(), 0, nullptr);
 }
 
 void recordCommandBuffers() {

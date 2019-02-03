@@ -20,6 +20,7 @@ add_executable( Valkun ${CXX_FILES} ${CXX_HEADERS} ${RES_FILES} ${BAT_FILES})
 set( GLFW_DIR C:/software/c++/glfw-3.2.1.bin.WIN64 )
 set( VULKAN_DIR C:/VulkanSDK/1.1.85.0 )
 set( STB_DIR C:/software/c++/stb )
+set( TINYOBJ_DIR C:/software/c++/tinyobjloader )
 
 include_directories( 
 	${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -29,6 +30,7 @@ include_directories( ${VULKAN_DIR}/Include )
 include_directories( ${GLFW_DIR}/include )
 include_directories( ${VULKAN_DIR}/Third-Party/Include )
 include_directories( ${STB_DIR} )
+include_directories( ${TINYOBJ_DIR} )
 
 
 ####################################################################################

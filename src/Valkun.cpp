@@ -4,19 +4,23 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////// INCLUDES & DEFINES////////
 
-#include <VulkanUtils.h>
-#include <EasyImage.h>
-#include <DepthImage.h>
-
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <string>
 #include <chrono>
 
+#include <VulkanUtils.h>
+#include <EasyImage.h>
+#include <DepthImage.h>
+#include <Vertex.h>
+#include <Mesh.h>
+
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
+#include <InputHandler.h>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////// GLOBAL VARS ////////
@@ -58,52 +62,15 @@ VkDescriptorSet descriptorSet;
 
 EasyImage devTex;
 DepthImage depthImage;
+Mesh devMesh; 
 
+VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
+glm::vec3 eyePos = glm::vec3(-1.0f, 0.0f, 0.0f);
+glm::vec3 lookDir = glm::vec3(1.0f, 0.0f, 0.0f);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////// HELPER CLASSES/STRUCTS ////////
-
-class Vertex {
-public: 
-	glm::vec3 pos;
-	glm::vec3 color;
-	glm::vec2 uvCoord;
-
-	Vertex(glm::vec3 pos, glm::vec3 color, glm::vec2 uvCoord)
-		: pos(pos), color(color), uvCoord(uvCoord)
-	{}
-
-	static VkVertexInputBindingDescription getBindingDescription() {
-		VkVertexInputBindingDescription vertexInputBindingDescription;
-
-		vertexInputBindingDescription.binding = 0;
-		vertexInputBindingDescription.stride = sizeof(Vertex);
-		vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-		return vertexInputBindingDescription;
-	}
-
-	static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions() {
-		std::vector<VkVertexInputAttributeDescription> vertexInputAttributeDescriptions(3);
-		vertexInputAttributeDescriptions[0].location = 0;
-		vertexInputAttributeDescriptions[0].binding = 0;
-		vertexInputAttributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-		vertexInputAttributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-		vertexInputAttributeDescriptions[1].location = 1;
-		vertexInputAttributeDescriptions[1].binding = 0;
-		vertexInputAttributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-		vertexInputAttributeDescriptions[1].offset = offsetof(Vertex, color);
-
-		vertexInputAttributeDescriptions[2].location = 2;
-		vertexInputAttributeDescriptions[2].binding = 0;
-		vertexInputAttributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-		vertexInputAttributeDescriptions[2].offset = offsetof(Vertex, uvCoord);
-
-		return vertexInputAttributeDescriptions;
-	}
-};
 
 std::vector<Vertex> vertices = {
 	Vertex({ -0.5f, -0.5f,  0.0f }, { 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f }),
@@ -589,7 +556,7 @@ void createPipeline() {
 	rasterizationCreateInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterizationCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizationCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizationCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterizationCreateInfo.frontFace = frontFace;
 	rasterizationCreateInfo.depthBiasEnable = VK_FALSE;
 	rasterizationCreateInfo.depthBiasConstantFactor = 0.0f;
 	rasterizationCreateInfo.depthBiasClamp = 0.0f;
@@ -735,6 +702,12 @@ void createCommandBuffers() {
 void loadTexture() {
 	devTex.load("Resources/Textures/tex.png");
 	devTex.upload(device, physicalDevices[0], commandPool, queue); 
+}
+
+void loadMesh() {
+	devMesh.create("Resources/Models/dragon.obj");
+	vertices = devMesh.getVertices(); 
+	indices = devMesh.getIndices(); 
 }
 
 void createVertexBuffer() {
@@ -960,7 +933,12 @@ void startGlfw() {
 
 	std::string title = "Valkun Sample (" + std::to_string(width) + "x" + std::to_string(height) + ")";
 	window = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
-	glfwSetWindowSizeCallback(window, onWindowResized); 
+	glfwSetWindowSizeCallback(window, onWindowResized);
+
+	InputHandler::setEyePos(&eyePos); 
+	InputHandler::setLookDir(&lookDir);
+	glfwSetKeyCallback(window, InputHandler::key_callback);
+	glfwSetCursorPosCallback(window, InputHandler::cursor_position_callback);
 }
 
 void startVulkan() {
@@ -985,6 +963,7 @@ void startVulkan() {
 	createCommandBuffers();
 
 	loadTexture(); 
+	loadMesh(); 
 	createVertexBuffer();
 	createIndexBuffer(); 
 	createUniformBuffer(); 
@@ -1033,9 +1012,25 @@ void updateMVP() {
 
 	float timeSinceStart = std::chrono::duration_cast<std::chrono::milliseconds>(frameTime - gameStartTime).count() / 1000.0f;
 
-	glm::mat4 model = glm::rotate(glm::mat4(1.0f), timeSinceStart * glm::radians(30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	glm::mat4 view = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)); 
-	glm::mat4 projection = glm::perspective(glm::radians(60.0f), width / (float)height, 0.01f, 10.0f);
+	glm::mat4 model = 
+		glm::translate(
+			glm::rotate(
+				glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f)), 
+				timeSinceStart * glm::radians(30.0f), 
+				glm::vec3(0.0f, 0.0f, 1.0f)), 
+			glm::vec3(0, 0, -2.0f));
+	glm::mat4 view = 
+		glm::lookAt(
+			eyePos, 
+			eyePos + lookDir, 
+			glm::vec3(0.0f, 0.0f, 1.0f)
+		); 
+	glm::mat4 projection = 
+		glm::perspective(
+			glm::radians(60.0f), 
+			width / (float)height, 
+			0.01f, 10.0f
+		);
 	projection[1][1] *= -1;
 
 	MVP = projection * view * model;

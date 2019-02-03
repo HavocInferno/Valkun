@@ -94,12 +94,12 @@ private:
 	static void callback_W()
 	{
 		//eyeVec->x += 1.0f;
-		*eyeVec += *lookVec * 1.0f;
+		*eyeVec += *lookVec * 0.3f;
 	}
 	static void callback_S()
 	{
 		//eyeVec->x -= 1.0f;
-		*eyeVec -= *lookVec * 1.0f;
+		*eyeVec -= *lookVec * 0.3f;
 	}
 	static void callback_A()
 	{

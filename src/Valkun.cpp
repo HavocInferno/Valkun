@@ -705,7 +705,7 @@ void loadTexture() {
 }
 
 void loadMesh() {
-	devMesh.create("Resources/Models/dragon.obj");
+	devMesh.create("Resources/Models/tiger_i.obj");
 	vertices = devMesh.getVertices(); 
 	indices = devMesh.getIndices(); 
 }

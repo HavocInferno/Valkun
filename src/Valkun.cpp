@@ -64,7 +64,7 @@ EasyImage devTex;
 DepthImage depthImage;
 Mesh devMesh; 
 
-VkFrontFace frontFace = VK_FRONT_FACE_CLOCKWISE;
+VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
 glm::vec3 eyePos = glm::vec3(-1.0f, 0.0f, 0.0f);
 glm::vec3 lookDir = glm::vec3(1.0f, 0.0f, 0.0f);
@@ -235,7 +235,7 @@ void createInstance() {
 	appInfo.apiVersion = VK_API_VERSION_1_0;
 
 	const std::vector<const char*> validationLayers = {
-		//"VK_LAYER_LUNARG_standard_validation"
+		"VK_LAYER_LUNARG_standard_validation"
 	};
 
 	uint32_t numGlfwExtensions = 0;
@@ -699,15 +699,22 @@ void createCommandBuffers() {
 	ASSERT_VULKAN(result);
 }
 
-void loadTexture() {
-	devTex.load("Resources/Textures/tiger_i.png");
+void loadTexture(const char* path) {
+	devTex.load(path);
 	devTex.upload(device, physicalDevices[0], commandPool, queue); 
 }
 
-void loadMesh() {
-	devMesh.create("Resources/Models/tiger_i.obj");
+void loadMesh(const char* path) {
+	devMesh.create(path);
 	vertices = devMesh.getVertices(); 
 	indices = devMesh.getIndices(); 
+}
+
+void loadModelAsset(const char* texFName, const char* meshFName) {
+	std::string texPath = "Resources/Textures/" + std::string(texFName);
+	std::string meshPath = "Resources/Models/" + std::string(meshFName);
+	loadTexture(texPath.c_str());
+	loadMesh(meshPath.c_str());
 }
 
 void createVertexBuffer() {
@@ -911,14 +918,14 @@ void recreateSwapchain() {
 }
 
 void onWindowResized(GLFWwindow *window, int newWidth, int newHeight) {
+	if (newWidth <= 0 || newHeight <= 0) return; //Do nothing for invalid args
+
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevices[0], surface, &surfaceCapabilities);
 
 	if (newWidth > surfaceCapabilities.maxImageExtent.width) newWidth = surfaceCapabilities.maxImageExtent.width;
 	if (newHeight > surfaceCapabilities.maxImageExtent.height) newHeight = surfaceCapabilities.maxImageExtent.height;
-
-	if (newWidth <= 0 || newHeight <= 0) return; //Do nothing for invalid args
-
+	
 	width = newWidth;
 	height = newHeight;
 	recreateSwapchain();
@@ -962,8 +969,7 @@ void startVulkan() {
 	createFramebuffers(); 
 	createCommandBuffers();
 
-	loadTexture(); 
-	loadMesh(); 
+	loadModelAsset("chalet.jpg", "chalet.obj");
 	createVertexBuffer();
 	createIndexBuffer(); 
 	createUniformBuffer(); 
@@ -975,7 +981,13 @@ void startVulkan() {
 
 void drawFrame() {
 	uint32_t imageIndex; 
-	vkAcquireNextImageKHR(device, swapchain, std::numeric_limits<uint64_t>::max(), semaphoreImageAvailable, VK_NULL_HANDLE, &imageIndex);
+	VkResult result = vkAcquireNextImageKHR(device, swapchain, std::numeric_limits<uint64_t>::max(), semaphoreImageAvailable, VK_NULL_HANDLE, &imageIndex);
+	ASSERT_VULKAN(result);
+
+	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+		recreateSwapchain();
+		return;
+	}
 
 	VkSubmitInfo submitInfo; 
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -989,8 +1001,8 @@ void drawFrame() {
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &semaphoreRenderingDone;
 
-	VkResult result = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE); 
-	ASSERT_VULKAN(result); 
+	result = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE); 
+	ASSERT_VULKAN(result);
 
 	VkPresentInfoKHR presentInfo; 
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;

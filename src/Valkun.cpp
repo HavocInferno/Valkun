@@ -64,7 +64,7 @@ EasyImage devTex;
 DepthImage depthImage;
 Mesh devMesh; 
 
-VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+VkFrontFace frontFace = VK_FRONT_FACE_CLOCKWISE;
 VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
 glm::vec3 eyePos = glm::vec3(-1.0f, 0.0f, 0.0f);
 glm::vec3 lookDir = glm::vec3(1.0f, 0.0f, 0.0f);
@@ -235,7 +235,7 @@ void createInstance() {
 	appInfo.apiVersion = VK_API_VERSION_1_0;
 
 	const std::vector<const char*> validationLayers = {
-		"VK_LAYER_LUNARG_standard_validation"
+		//"VK_LAYER_LUNARG_standard_validation"
 	};
 
 	uint32_t numGlfwExtensions = 0;
@@ -700,7 +700,7 @@ void createCommandBuffers() {
 }
 
 void loadTexture() {
-	devTex.load("Resources/Textures/tex.png");
+	devTex.load("Resources/Textures/tiger_i.png");
 	devTex.upload(device, physicalDevices[0], commandPool, queue); 
 }
 

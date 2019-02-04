@@ -55,6 +55,18 @@ public:
 
 				Vertex vert(pos, glm::vec3{ 0.0f, 1.0f, 0.0f }, glm::vec2{ 0, 0 }); //see https://youtu.be/KedrqATjoy0?t=950 for texture/uvCoord hint
 
+				/*vert.uvCoord= {
+					vertexAttributes.texcoords[2 * index.texcoord_index + 0],
+					vertexAttributes.texcoords[2 * index.texcoord_index + 1]
+				};*/
+
+				vert.uvCoord = {
+					vertexAttributes.texcoords[2 * index.texcoord_index + 0],
+					1.0f - vertexAttributes.texcoords[2 * index.texcoord_index + 1]
+				};
+
+				vert.color = { 1.0f, 1.0f, 1.0f };
+
 				if (vertices.count(vert) == 0)
 				{
 					vertices[vert] = vertices.size();

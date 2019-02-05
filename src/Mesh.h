@@ -19,6 +19,8 @@
 
 class Mesh {
 private:
+	std::vector<Vertex>* m_pVertices;
+	std::vector<uint32_t>* m_pIndices;
 	std::vector<Vertex> m_vertices;
 	std::vector<uint32_t> m_indices;
 
@@ -27,7 +29,23 @@ public:
 
 	}
 
+	void setVertexStore(std::vector<Vertex>* vertices) {
+		m_pVertices = vertices;
+	}
+
+	void setIndexStore(std::vector<uint32_t>* indices) {
+		m_pIndices = indices;
+	}
+
 	void create(const char* path) {
+		if (!m_pVertices)
+		{
+			setVertexStore(&m_vertices);
+		}
+		if (!m_pIndices)
+		{
+			setIndexStore(&m_indices);
+		}
 		tinyobj::attrib_t vertexAttributes;
 		std::vector<tinyobj::shape_t> shapes;
 		std::vector<tinyobj::material_t> materials;
@@ -38,7 +56,7 @@ public:
 
 		if (!success)
 		{
-			throw std::runtime_error(errorString); 
+			throw std::runtime_error(warnString + errorString); 
 		}
 
 		std::unordered_map<Vertex, uint32_t> vertices;
@@ -58,10 +76,10 @@ public:
 				if (vertices.count(vert) == 0)
 				{
 					vertices[vert] = vertices.size();
-					m_vertices.push_back(vert); 
+					m_pVertices->push_back(vert); 
 				}
 
-				m_indices.push_back(vertices[vert]); 
+				m_pIndices->push_back(vertices[vert]); 
 			}
 		}
 	}

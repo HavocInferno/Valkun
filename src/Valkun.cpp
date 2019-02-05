@@ -64,6 +64,9 @@ EasyImage devTex;
 DepthImage depthImage;
 Mesh devMesh; 
 
+EasyImage tmpTex;
+Mesh tmpMesh;
+
 VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
 glm::vec3 eyePos = glm::vec3(-1.0f, 0.0f, 0.0f);
@@ -72,8 +75,44 @@ glm::vec3 lookDir = glm::vec3(1.0f, 0.0f, 0.0f);
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////// HELPER CLASSES/STRUCTS ////////
 
+// Shader properites for a material
+// Will be passed to the shaders using push constant
+struct SceneMaterialProperties
+{
+	glm::vec4 ambient;
+	glm::vec4 diffuse;
+	glm::vec4 specular;
+	float opacity;
+};
+
+// Stores info on the materials used in the scene
+struct SceneMaterial
+{
+	std::string name;
+	// Material properties
+	SceneMaterialProperties properties;
+	// The example only uses a diffuse channel
+	EasyImage diffuse;
+	// The material's descriptor contains the material descriptors
+	VkDescriptorSet descriptorSet;
+	// Pointer to the pipeline used by this material
+	VkPipeline *pipeline;
+};
+
+// Stores per-mesh Vulkan resources
+struct ScenePart
+{
+	// Index of first index in the scene buffer
+	uint32_t indexBase;
+	uint32_t indexCount;
+
+	// Pointer to the material used by this mesh
+	SceneMaterial *material;
+};
+std::vector<ScenePart> meshes = std::vector<ScenePart>(0);
+
 std::vector<Vertex> vertices = {
-	Vertex({ -0.5f, -0.5f,  0.0f }, { 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f }),
+	/*Vertex({ -0.5f, -0.5f,  0.0f }, { 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f }),
 	Vertex({  0.5f,  0.5f,  0.0f }, { 1.0f, 1.0f, 0.0f }, { 1.0f, 1.0f }),
 	Vertex({ -0.5f,  0.5f,  0.0f }, { 0.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }),
 	Vertex({  0.5f, -0.5f,  0.0f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }),
@@ -81,12 +120,12 @@ std::vector<Vertex> vertices = {
 	Vertex({ -0.5f, -0.5f, -1.0f }, { 1.0f, 0.0f, 1.0f }, { 0.0f, 0.0f }),
 	Vertex({  0.5f,  0.5f, -1.0f }, { 1.0f, 1.0f, 0.0f }, { 1.0f, 1.0f }),
 	Vertex({ -0.5f,  0.5f, -1.0f }, { 0.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }),
-	Vertex({  0.5f, -0.5f, -1.0f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f })
+	Vertex({  0.5f, -0.5f, -1.0f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f })*/
 };
 
 std::vector<uint32_t> indices = {
-	0, 1, 2, 0, 3, 1, 
-	4, 5, 6, 4, 7, 5
+	/*0, 1, 2, 0, 3, 1, 
+	4, 5, 6, 4, 7, 5*/
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -699,15 +738,35 @@ void createCommandBuffers() {
 	ASSERT_VULKAN(result);
 }
 
-void loadTexture() {
+void loadTexture(const char *path) {
 	devTex.load("Resources/Textures/tex.png");
 	devTex.upload(device, physicalDevices[0], commandPool, queue); 
 }
 
-void loadMesh() {
+void loadMesh(const char *path) {
 	devMesh.create("Resources/Models/tiger_i.obj");
 	vertices = devMesh.getVertices(); 
 	indices = devMesh.getIndices(); 
+}
+
+void loadAsset_MeshAndTex(const char *meshPath, const char *texPath) {
+	//tmpTex.load(texPath);
+
+	size_t numVertsBefore = vertices.size();
+	size_t numIndicesBefore = indices.size();
+
+	tmpMesh.setVertexStore(&vertices);
+	tmpMesh.setIndexStore(&indices);
+	tmpMesh.create(meshPath);
+
+	size_t numVertsAfter = vertices.size();
+	size_t numIndicesAfter = indices.size();
+
+	ScenePart sp;
+	sp.indexBase = numIndicesBefore;
+	sp.indexCount = numIndicesAfter - numIndicesBefore;
+	//sp.material = ;
+	meshes.emplace_back(sp);
 }
 
 void createVertexBuffer() {
@@ -848,11 +907,12 @@ void recordCommandBuffers() {
 		vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, &vertexBuffer, offsets);
 		vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-		vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr); 
-
-		//vkCmdDraw(commandBuffers[i], vertices.size(), 1, 0, 0);
-		vkCmdDrawIndexed(commandBuffers[i], indices.size(), 1, 0, 0, 0);
-
+		for (auto mesh : meshes) 
+		{
+			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+			vkCmdDrawIndexed(commandBuffers[i], mesh.indexCount, 1, 0, mesh.indexBase, 0);
+		}
+		
 		vkCmdEndRenderPass(commandBuffers[i]);
 
 		result = vkEndCommandBuffer(commandBuffers[i]);
@@ -962,8 +1022,10 @@ void startVulkan() {
 	createFramebuffers(); 
 	createCommandBuffers();
 
-	loadTexture(); 
-	loadMesh(); 
+	loadTexture("Resources/Textures/tex.png");
+	//loadMesh(); 
+	loadAsset_MeshAndTex("Resources/Models/tiger_i.obj", "Resources/Textures/tiger_i.png");
+	loadAsset_MeshAndTex("Resources/Models/lp_tree.obj", "Resources/Textures/tex.png");
 	createVertexBuffer();
 	createIndexBuffer(); 
 	createUniformBuffer(); 

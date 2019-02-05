@@ -739,12 +739,12 @@ void createCommandBuffers() {
 }
 
 void loadTexture(const char *path) {
-	devTex.load("Resources/Textures/tex.png");
+	devTex.load(path);
 	devTex.upload(device, physicalDevices[0], commandPool, queue); 
 }
 
 void loadMesh(const char *path) {
-	devMesh.create("Resources/Models/tiger_i.obj");
+	devMesh.create(path);
 	vertices = devMesh.getVertices(); 
 	indices = devMesh.getIndices(); 
 }
@@ -971,14 +971,14 @@ void recreateSwapchain() {
 }
 
 void onWindowResized(GLFWwindow *window, int newWidth, int newHeight) {
+	if (newWidth <= 0 || newHeight <= 0) return; //Do nothing for invalid args
+
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevices[0], surface, &surfaceCapabilities);
 
 	if (newWidth > surfaceCapabilities.maxImageExtent.width) newWidth = surfaceCapabilities.maxImageExtent.width;
 	if (newHeight > surfaceCapabilities.maxImageExtent.height) newHeight = surfaceCapabilities.maxImageExtent.height;
-
-	if (newWidth <= 0 || newHeight <= 0) return; //Do nothing for invalid args
-
+	
 	width = newWidth;
 	height = newHeight;
 	recreateSwapchain();
@@ -1037,7 +1037,13 @@ void startVulkan() {
 
 void drawFrame() {
 	uint32_t imageIndex; 
-	vkAcquireNextImageKHR(device, swapchain, std::numeric_limits<uint64_t>::max(), semaphoreImageAvailable, VK_NULL_HANDLE, &imageIndex);
+	VkResult result = vkAcquireNextImageKHR(device, swapchain, std::numeric_limits<uint64_t>::max(), semaphoreImageAvailable, VK_NULL_HANDLE, &imageIndex);
+	ASSERT_VULKAN(result);
+
+	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+		recreateSwapchain();
+		return;
+	}
 
 	VkSubmitInfo submitInfo; 
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1051,8 +1057,8 @@ void drawFrame() {
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &semaphoreRenderingDone;
 
-	VkResult result = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE); 
-	ASSERT_VULKAN(result); 
+	result = vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE); 
+	ASSERT_VULKAN(result);
 
 	VkPresentInfoKHR presentInfo; 
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;

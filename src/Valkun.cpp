@@ -64,10 +64,7 @@ EasyImage devTex;
 DepthImage depthImage;
 Mesh devMesh; 
 
-EasyImage tmpTex;
-Mesh tmpMesh;
-
-VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+VkFrontFace frontFace = VK_FRONT_FACE_CLOCKWISE;
 VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
 glm::vec3 eyePos = glm::vec3(-1.0f, 0.0f, 0.0f);
 glm::vec3 lookDir = glm::vec3(1.0f, 0.0f, 0.0f);
@@ -103,11 +100,11 @@ struct SceneMaterial
 struct ScenePart
 {
 	// Index of first index in the scene buffer
-	uint32_t indexBase;
-	uint32_t indexCount;
+	uint32_t indexBase = 0;
+	uint32_t indexCount = 0;
 
 	// Pointer to the material used by this mesh
-	SceneMaterial *material;
+	SceneMaterial *material = nullptr;
 };
 std::vector<ScenePart> meshes = std::vector<ScenePart>(0);
 
@@ -755,6 +752,7 @@ void loadAsset_MeshAndTex(const char *meshPath, const char *texPath) {
 	size_t numVertsBefore = vertices.size();
 	size_t numIndicesBefore = indices.size();
 
+	Mesh tmpMesh;
 	tmpMesh.setVertexStore(&vertices);
 	tmpMesh.setIndexStore(&indices);
 	tmpMesh.create(meshPath);
@@ -909,8 +907,39 @@ void recordCommandBuffers() {
 
 		for (auto mesh : meshes) 
 		{
-			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-			vkCmdDrawIndexed(commandBuffers[i], mesh.indexCount, 1, 0, mesh.indexBase, 0);
+			//if ((renderSingleScenePart) && (i != scenePartIndex))
+			//	continue;
+
+			// We will be using multiple descriptor sets for rendering
+			// In GLSL the selection is done via the set and binding keywords
+			// VS: layout (set = 0, binding = 0) uniform UBO;
+			// FS: layout (set = 1, binding = 0) uniform sampler2D samplerColorMap;
+
+			std::vector<VkDescriptorSet> descriptorSets;
+			// Set 0: Scene descriptor set containing global matrices
+			descriptorSets.push_back(descriptorSet);
+			// Set 1: Per-Material descriptor set containing bound images
+			if (mesh.material)
+			{
+				descriptorSets.push_back(mesh.material->descriptorSet);
+			}
+
+			
+			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, descriptorSets.size(), descriptorSets.data(), 0, nullptr);
+
+			// Pass material properies via push constants
+			if (mesh.material)
+			{
+				vkCmdPushConstants(
+					commandBuffers[i],
+					pipelineLayout,
+					VK_SHADER_STAGE_FRAGMENT_BIT,
+					0,
+					sizeof(SceneMaterialProperties),
+					&mesh.material->properties);
+			}
+
+			vkCmdDrawIndexed(commandBuffers[i], mesh.indexCount, 1, mesh.indexBase, 0, 0);
 		}
 		
 		vkCmdEndRenderPass(commandBuffers[i]);

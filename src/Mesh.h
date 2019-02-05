@@ -67,8 +67,8 @@ public:
 			{
 				glm::vec3 pos = {
 					vertexAttributes.vertices[3 * index.vertex_index + 0],
-					vertexAttributes.vertices[3 * index.vertex_index + 1],
-					vertexAttributes.vertices[3 * index.vertex_index + 2]
+					vertexAttributes.vertices[3 * index.vertex_index + 2],
+					vertexAttributes.vertices[3 * index.vertex_index + 1]
 				};
 
 				Vertex vert(pos, glm::vec3{ 0.0f, 1.0f, 0.0f }, glm::vec2{ 0, 0 }); //see https://youtu.be/KedrqATjoy0?t=950 for texture/uvCoord hint
@@ -87,7 +87,7 @@ public:
 
 				if (vertices.count(vert) == 0)
 				{
-					vertices[vert] = vertices.size();
+					vertices[vert] = m_pVertices->size();
 					m_pVertices->push_back(vert); 
 				}
 

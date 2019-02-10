@@ -149,10 +149,10 @@ public:
 		endSingleTimeCommandBuffer(device, queue, commandPool, commandBuffer);
 	}
 
-	EasyImage(const EasyImage &) = delete;
-	EasyImage(EasyImage &&) = delete;
-	EasyImage& operator=(const EasyImage &) = delete;
-	EasyImage& operator=(EasyImage &&) = delete;
+	//EasyImage(const EasyImage &) = delete;
+	//EasyImage(EasyImage &&) = delete;
+	//EasyImage& operator=(const EasyImage &) = delete;
+	//EasyImage& operator=(EasyImage &&) = delete;
 
 	void destroy() {
 		if (m_loaded)

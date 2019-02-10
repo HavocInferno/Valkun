@@ -526,7 +526,7 @@ void createDescriptorSetLayout()
 	// Set 1: Material data
 	setLayoutBindings.clear();
 	VkDescriptorSetLayoutBinding samplerDescriptorSetLayoutBinding;
-	samplerDescriptorSetLayoutBinding.binding = 1; //not 1?
+	samplerDescriptorSetLayoutBinding.binding = 0; //not 1?
 	samplerDescriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	samplerDescriptorSetLayoutBinding.descriptorCount = 1;
 	samplerDescriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -673,8 +673,8 @@ void createPipeline() {
 	// We will be using a push constant block to pass material properties to the fragment shaders
 	VkPushConstantRange pushConstantRange;
 	pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	pushConstantRange.offset = sizeof(SceneMaterialProperties);
-	pushConstantRange.size = 0;
+	pushConstantRange.offset = 0;
+	pushConstantRange.size = sizeof(SceneMaterialProperties);
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutCreateInfo.pNext = nullptr;
@@ -832,7 +832,7 @@ void createDescriptorPool() {
 	descriptorPoolCreateInfo.pNext = nullptr;
 	descriptorPoolCreateInfo.flags = 0;
 	descriptorPoolCreateInfo.maxSets = static_cast<uint32_t>(materials.size()) + 1;
-	descriptorPoolCreateInfo.poolSizeCount = descriptorPoolSizes.size();
+	descriptorPoolCreateInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.size());
 	descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes.data();
 
 	VkResult result = vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool);
@@ -867,7 +867,7 @@ void createDescriptorSet() {
 		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSet.pNext = nullptr;
 		writeDescriptorSet.dstSet = materials[i].descriptorSet;
-		writeDescriptorSet.dstBinding = 1;
+		writeDescriptorSet.dstBinding = 0;
 		writeDescriptorSet.dstArrayElement = 0;
 		writeDescriptorSet.descriptorCount = 1;
 		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;

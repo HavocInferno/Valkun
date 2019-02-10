@@ -13,7 +13,7 @@ layout(location = 2) in vec2 inUVCoord;
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragUVCoord;
 
-layout(binding = 0) uniform UBO
+layout(set = 0, binding = 0) uniform UBO
 {
 	mat4 MVP;
 } ubo;

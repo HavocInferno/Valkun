@@ -71,9 +71,7 @@ struct
 VkDescriptorPool descriptorPool;
 VkDescriptorSet descriptorSetScene;
 
-EasyImage devTex;
 DepthImage depthImage;
-Mesh devMesh; 
 
 VkFrontFace frontFace = VK_FRONT_FACE_CLOCKWISE;
 VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -763,21 +761,10 @@ void createCommandBuffers() {
 	ASSERT_VULKAN(result);
 }
 
-void loadTexture(const char *path) {
-	devTex.load(path);
-	devTex.upload(device, physicalDevices[0], commandPool, queue); 
-}
-
-void loadMesh(const char *path) {
-	devMesh.create(path);
-	vertices = devMesh.getVertices(); 
-	indices = devMesh.getIndices(); 
-}
-
 void loadAsset_MeshAndTex(const char *meshPath, const char *texPath) {
 	SceneMaterial smat;
 	materials.push_back(smat);
-	auto psmat = materials.rbegin();
+	auto psmat = &(materials.back());
 	psmat->name = texPath;
 	psmat->pipeline = &pipeline;
 	psmat->diffuse.load(texPath);
@@ -1102,8 +1089,6 @@ void startVulkan() {
 	createFramebuffers(); 
 	createCommandBuffers();
 
-	//loadTexture("Resources/Textures/tex.png");
-	//loadMesh(); 
 	loadAsset_MeshAndTex("Resources/Models/tiger_i.obj", "Resources/Textures/tiger_i.png");
 	loadAsset_MeshAndTex("Resources/Models/lp_tree.obj", "Resources/Textures/tex.png");
 	createVertexBuffer();
@@ -1226,7 +1211,8 @@ void shutdownVulkan() {
 	vkFreeMemory(device, vertexBufferDeviceMemory, nullptr); 
 	vkDestroyBuffer(device, vertexBuffer, nullptr); 
 
-	devTex.destroy(); 
+	materials.clear(); 
+	meshes.clear(); 
 
 	vkDestroySemaphore(device, semaphoreImageAvailable, nullptr);
 	vkDestroySemaphore(device, semaphoreRenderingDone, nullptr); 

@@ -104,7 +104,9 @@ struct SceneMaterial
 	// Pointer to the pipeline used by this material
 	VkPipeline *pipeline;
 };
-std::vector<SceneMaterial> materials; // = std::vector<SceneMaterial>(0);
+std::vector<SceneMaterial> materials = std::vector<SceneMaterial>(2);
+SceneMaterial smat1;
+SceneMaterial smat2;
 
 // Stores per-mesh Vulkan resources
 struct ScenePart
@@ -761,14 +763,21 @@ void createCommandBuffers() {
 	ASSERT_VULKAN(result);
 }
 
+static int smatCount = 0;
 void loadAsset_MeshAndTex(const char *meshPath, const char *texPath) {
-	SceneMaterial smat;
-	materials.push_back(smat);
-	auto psmat = &(materials.back());
-	psmat->name = texPath;
-	psmat->pipeline = &pipeline;
-	psmat->diffuse.load(texPath);
-	psmat->diffuse.upload(device, physicalDevices[0], commandPool, queue);
+	if (smatCount == 0) {
+		smat1.name = texPath;
+		smat1.pipeline = &pipeline;
+		smat1.diffuse.load(texPath);
+		smat1.diffuse.upload(device, physicalDevices[0], commandPool, queue);
+		smatCount++;
+	}
+	else {
+		smat2.name = texPath;
+		smat2.pipeline = &pipeline;
+		smat2.diffuse.load(texPath);
+		smat2.diffuse.upload(device, physicalDevices[0], commandPool, queue);
+	}
 
 	size_t numVertsBefore = vertices.size();
 	size_t numIndicesBefore = indices.size();
@@ -784,7 +793,7 @@ void loadAsset_MeshAndTex(const char *meshPath, const char *texPath) {
 	ScenePart sp;
 	sp.indexBase = numIndicesBefore;
 	sp.indexCount = numIndicesAfter - numIndicesBefore;
-	sp.material = &(materials.back());
+	//sp.material = &(materials.back());
 	meshes.emplace_back(sp);
 }
 
@@ -838,8 +847,13 @@ void createDescriptorSet() {
 		allocInfo.descriptorSetCount = 1;
 		allocInfo.pSetLayouts = &descriptorSetLayouts.material;
 
-		VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &materials[i].descriptorSet);
-		ASSERT_VULKAN(result);
+		if (i == 0) {
+			VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &smat1.descriptorSet);
+		}
+		else {
+			VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &smat2.descriptorSet);
+		}
+		//ASSERT_VULKAN(result);
 
 		std::vector<VkWriteDescriptorSet> writeDescriptorSets;
 
@@ -847,13 +861,23 @@ void createDescriptorSet() {
 
 		// Binding 0: Diffuse texture
 		VkDescriptorImageInfo descriptorImageInfo;
-		descriptorImageInfo.sampler = materials[i].diffuse.getSampler();
-		descriptorImageInfo.imageView = materials[i].diffuse.getImageView();
-		descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		VkWriteDescriptorSet writeDescriptorSet;
+		if (i == 0) {
+			descriptorImageInfo.sampler = smat1.diffuse.getSampler();
+			descriptorImageInfo.imageView = smat1.diffuse.getImageView();
+			writeDescriptorSet.dstSet = smat1.descriptorSet;
+		}
+		else {
+			descriptorImageInfo.sampler = smat2.diffuse.getSampler();
+			descriptorImageInfo.imageView = smat2.diffuse.getImageView();
+			writeDescriptorSet.dstSet = smat2.descriptorSet;
+		}
+
+		descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
 		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = materials[i].descriptorSet;
+		
 		writeDescriptorSet.dstBinding = 0;
 		writeDescriptorSet.dstArrayElement = 0;
 		writeDescriptorSet.descriptorCount = 1;
@@ -949,6 +973,7 @@ void recordCommandBuffers() {
 		vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, &vertexBuffer, offsets);
 		vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
+		int j = 0;
 		for (auto mesh : meshes) 
 		{
 			//if ((renderSingleScenePart) && (i != scenePartIndex))
@@ -963,19 +988,19 @@ void recordCommandBuffers() {
 			// Set 0: Scene descriptor set containing global matrices
 			descriptorSets[0] = descriptorSetScene;
 			// Set 1: Per-Material descriptor set containing bound images
-			descriptorSets[1] = mesh.material->descriptorSet;
+			if (j == 0) {
+				descriptorSets[1] = smat1.descriptorSet;
+				j++;
+			}
+			else {
+				descriptorSets[1] = smat2.descriptorSet;
+			}
 
-			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, *mesh.material->pipeline);
+			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
 
 			// Pass material properies via push constants
-			vkCmdPushConstants(
-				commandBuffers[i],
-				pipelineLayout,
-				VK_SHADER_STAGE_FRAGMENT_BIT,
-				0,
-				sizeof(SceneMaterialProperties),
-				&mesh.material->properties);
+			
 
 			vkCmdDrawIndexed(commandBuffers[i], mesh.indexCount, 1, mesh.indexBase, 0, 0);
 		}

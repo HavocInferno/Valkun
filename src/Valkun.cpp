@@ -104,7 +104,7 @@ struct SceneMaterial
 	// Pointer to the pipeline used by this material
 	VkPipeline *pipeline;
 };
-std::vector<SceneMaterial> materials; // = std::vector<SceneMaterial>(0);
+std::vector<SceneMaterial*> materials; // = std::vector<SceneMaterial>(0);
 
 // Stores per-mesh Vulkan resources
 struct ScenePart
@@ -762,13 +762,12 @@ void createCommandBuffers() {
 }
 
 void loadAsset_MeshAndTex(const char *meshPath, const char *texPath) {
-	SceneMaterial smat;
+	SceneMaterial* smat = new SceneMaterial();
 	materials.push_back(smat);
-	auto psmat = &(materials.back());
-	psmat->name = texPath;
-	psmat->pipeline = &pipeline;
-	psmat->diffuse.load(texPath);
-	psmat->diffuse.upload(device, physicalDevices[0], commandPool, queue);
+	smat->name = texPath;
+	smat->pipeline = &pipeline;
+	smat->diffuse.load(texPath);
+	smat->diffuse.upload(device, physicalDevices[0], commandPool, queue);
 
 	size_t numVertsBefore = vertices.size();
 	size_t numIndicesBefore = indices.size();
@@ -784,7 +783,7 @@ void loadAsset_MeshAndTex(const char *meshPath, const char *texPath) {
 	ScenePart sp;
 	sp.indexBase = numIndicesBefore;
 	sp.indexCount = numIndicesAfter - numIndicesBefore;
-	sp.material = &(materials.back());
+	sp.material = smat;
 	meshes.emplace_back(sp);
 }
 
@@ -838,7 +837,7 @@ void createDescriptorSet() {
 		allocInfo.descriptorSetCount = 1;
 		allocInfo.pSetLayouts = &descriptorSetLayouts.material;
 
-		VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &materials[i].descriptorSet);
+		VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &materials[i]->descriptorSet);
 		ASSERT_VULKAN(result);
 
 		std::vector<VkWriteDescriptorSet> writeDescriptorSets;
@@ -847,13 +846,13 @@ void createDescriptorSet() {
 
 		// Binding 0: Diffuse texture
 		VkDescriptorImageInfo descriptorImageInfo;
-		descriptorImageInfo.sampler = materials[i].diffuse.getSampler();
-		descriptorImageInfo.imageView = materials[i].diffuse.getImageView();
+		descriptorImageInfo.sampler = materials[i]->diffuse.getSampler();
+		descriptorImageInfo.imageView = materials[i]->diffuse.getImageView();
 		descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		VkWriteDescriptorSet writeDescriptorSet;
 		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSet.pNext = nullptr;
-		writeDescriptorSet.dstSet = materials[i].descriptorSet;
+		writeDescriptorSet.dstSet = materials[i]->descriptorSet;
 		writeDescriptorSet.dstBinding = 0;
 		writeDescriptorSet.dstArrayElement = 0;
 		writeDescriptorSet.descriptorCount = 1;
@@ -1211,6 +1210,9 @@ void shutdownVulkan() {
 	vkFreeMemory(device, vertexBufferDeviceMemory, nullptr); 
 	vkDestroyBuffer(device, vertexBuffer, nullptr); 
 
+	for (size_t i = 0; i < materials.size(); i++) {
+		delete materials[i]; 
+	}
 	materials.clear(); 
 	meshes.clear(); 
 

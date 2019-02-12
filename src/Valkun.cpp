@@ -880,7 +880,7 @@ void createUniformBuffer() {
 	ASSERT_VULKAN(result); 
 
 	// Uniform buffer object with per-object matrices
-	result = createBuffer2(device, physicalDevices[0], sizeof(uboDataDynamic), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, &uniformBuffers.dynamic, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+	result = createBuffer2(device, physicalDevices[0], bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, &uniformBuffers.dynamic, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 	ASSERT_VULKAN(result);
 
 	// Map persistent
@@ -1095,7 +1095,7 @@ void recordCommandBuffers() {
 			// One dynamic offset per dynamic descriptor to offset into the ubo containing all model matrices
 			uint32_t dynamicOffset = meshIdx * static_cast<uint32_t>(dynamicAlignment);
 			// Bind the descriptor set for rendering a mesh using the dynamic offset
-			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[0], 1, &dynamicOffset);
+			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 1, &dynamicOffset);
 
 			vkCmdDrawIndexed(commandBuffers[i], mesh.indexCount, 1, mesh.indexBase, 0, 0);
 			meshIdx++;
@@ -1210,8 +1210,13 @@ void startVulkan() {
 	createFramebuffers(); 
 	createCommandBuffers();
 
-	loadAsset_MeshAndTex("Resources/Models/tiger_i.obj", "Resources/Textures/tiger_i.png");
-	loadAsset_MeshAndTex("Resources/Models/lp_tree.obj", "Resources/Textures/tex.png");
+	for (int i = 0; i < 100; i++)
+	{
+		loadAsset_MeshAndTex("Resources/Models/tiger_i.obj", "Resources/Textures/tiger_i.png");
+	}
+	//loadAsset_MeshAndTex("Resources/Models/tiger_i.obj", "Resources/Textures/tiger_i.png");
+	//loadAsset_MeshAndTex("Resources/Models/lp_tree.obj", "Resources/Textures/tex.png");
+
 	createVertexBuffer();
 	createIndexBuffer(); 
 	createUniformBuffer(); 
@@ -1266,7 +1271,7 @@ void updateUniformBuffers()
 	uniformDataVS.projection = glm::perspective(
 		glm::radians(60.0f),
 		width / (float)height,
-		0.01f, 10.0f
+		0.01f, 1000.0f
 	);
 	uniformDataVS.projection[1][1] *= -1;
 
@@ -1285,13 +1290,21 @@ void updateDynamicUniformBuffer(bool force = false) {
 
 	float timeSinceStart = std::chrono::duration_cast<std::chrono::milliseconds>(frameTime - gameStartTime).count() / 1000.0f;
 
+	int gridCount = 0, gridX = 0, gridY = 0, gridZ = 0;
 	for (size_t i = 0; i < meshes.size(); i++) {
 		// Aligned offset
 		glm::mat4* modelMat = (glm::mat4*)(((uint64_t)uboDataDynamic.model + (i * dynamicAlignment)));
 
 		// Update matrices
-		glm::vec3 pos = glm::vec3(i, i, i);
+		glm::vec3 pos = glm::vec3(gridX * 5, gridY * 5, gridZ * 5);
 		*modelMat = glm::translate(glm::mat4(1.0f), pos);
+
+		gridCount++;
+		gridX = gridCount % 10;
+		if (gridX > 0) {
+			gridY = (gridCount / gridX) % 10;
+			gridZ = (gridCount / (gridX * gridY)) % 10;
+		}
 	}
 
 	memcpy(uniformBuffers.dynamic.mapped, uboDataDynamic.model, uniformBuffers.dynamic.size);
@@ -1309,8 +1322,8 @@ void gameLoop() {
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents(); 
 
-		//updateMVP();
 		updateUniformBuffers();
+		//updateDynamicUniformBuffer(true);
 
 		drawFrame(); 
 	}

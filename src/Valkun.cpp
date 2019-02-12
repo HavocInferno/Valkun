@@ -524,22 +524,11 @@ void createDescriptorSetLayout()
 
 	setLayoutBindings.push_back(descriptorSetLayoutBinding);
 
-	descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	descriptorSetLayoutCreateInfo.pNext = nullptr;
-	descriptorSetLayoutCreateInfo.flags = 0;
-	descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(setLayoutBindings.size());
-	descriptorSetLayoutCreateInfo.pBindings = setLayoutBindings.data();
-
-	VkResult result = vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayouts.scene);
-	ASSERT_VULKAN(result);
-
-
 	// Set 0: Model matrices (dynamic ubo)
-	setLayoutBindings.clear();
 	VkDescriptorSetLayoutBinding dynUBODescriptorSetLayoutBinding;
-	dynUBODescriptorSetLayoutBinding.binding = 1; 
+	dynUBODescriptorSetLayoutBinding.binding = 1;
 	dynUBODescriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-	descriptorSetLayoutBinding.descriptorCount = 1;
+	dynUBODescriptorSetLayoutBinding.descriptorCount = 1;
 	dynUBODescriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	dynUBODescriptorSetLayoutBinding.pImmutableSamplers = nullptr;
 
@@ -551,7 +540,7 @@ void createDescriptorSetLayout()
 	descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(setLayoutBindings.size());
 	descriptorSetLayoutCreateInfo.pBindings = setLayoutBindings.data();
 
-	result = vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayouts.scene);
+	VkResult result = vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayouts.scene);
 	ASSERT_VULKAN(result);
 		
 
@@ -836,6 +825,7 @@ void createIndexBuffer() {
 }
 
 void createUniformBuffer() {
+	//https://github.com/SaschaWillems/Vulkan/blob/master/examples/dynamicuniformbuffer/dynamicuniformbuffer.cpp l.410-460 ref
 	VkDeviceSize bufferSize = sizeof(uniformDataVS);
 	createBuffer(device, physicalDevices[0], bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniformBuffer, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBufferMemory);
 }
@@ -843,7 +833,11 @@ void createUniformBuffer() {
 void createDescriptorPool() {
 	VkDescriptorPoolSize descriptorPoolSize;
 	descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	descriptorPoolSize.descriptorCount = static_cast<uint32_t>(materials.size());
+	descriptorPoolSize.descriptorCount = 1;
+
+	VkDescriptorPoolSize dynUBOPoolSize;
+	dynUBOPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	dynUBOPoolSize.descriptorCount = 1;
 
 	VkDescriptorPoolSize samplerPoolSize;
 	samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -851,6 +845,7 @@ void createDescriptorPool() {
 
 	std::vector<VkDescriptorPoolSize> descriptorPoolSizes;
 	descriptorPoolSizes.push_back(descriptorPoolSize);
+	descriptorPoolSizes.push_back(dynUBOPoolSize);
 	descriptorPoolSizes.push_back(samplerPoolSize); 
 
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo;
@@ -941,16 +936,16 @@ void createDescriptorSet() {
 	uniformBuffers.dynamic.descriptor.offset = 0;
 	uniformBuffers.dynamic.descriptor.range = sizeof(uboDataDynamic);
 	VkWriteDescriptorSet descriptorDynWrite;
-	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite.pNext = nullptr;
-	descriptorWrite.dstSet = descriptorSetScene;
-	descriptorWrite.dstBinding = 0;
-	descriptorWrite.dstArrayElement = 0;
-	descriptorWrite.descriptorCount = 1;
-	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-	descriptorWrite.pImageInfo = nullptr;
-	descriptorWrite.pBufferInfo = &uniformBuffers.dynamic.descriptor;
-	descriptorWrite.pTexelBufferView = nullptr;
+	descriptorDynWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorDynWrite.pNext = nullptr;
+	descriptorDynWrite.dstSet = descriptorSetScene;
+	descriptorDynWrite.dstBinding = 0;
+	descriptorDynWrite.dstArrayElement = 0;
+	descriptorDynWrite.descriptorCount = 1;
+	descriptorDynWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	descriptorDynWrite.pImageInfo = nullptr;
+	descriptorDynWrite.pBufferInfo = &uniformBuffers.dynamic.descriptor;
+	descriptorDynWrite.pTexelBufferView = nullptr;
 
 	writeDescriptorSets.push_back(descriptorDynWrite);
 

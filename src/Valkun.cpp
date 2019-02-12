@@ -23,6 +23,8 @@
 
 #include <InputHandler.h>
 
+#include <VulkanBuffer.h>
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////// GLOBAL VARS ////////
 
@@ -49,13 +51,15 @@ VkBuffer indexBuffer;
 VkDeviceMemory indexBufferDeviceMemory;
 VkBuffer uniformBuffer;
 VkDeviceMemory uniformBufferMemory;
+struct {
+	vks::Buffer view;
+	vks::Buffer dynamic;
+} uniformBuffers;
 struct UniformData {
-	glm::mat4 MVP;
 	glm::mat4 projection;
 	glm::mat4 view;
-	glm::mat4 model;
 	glm::vec4 lightPos = glm::vec4(1.25f, 8.35f, 0.0f, 0.0f);
-} uniformData;
+} uniformDataVS;
 uint32_t numImagesInSwapchain = 0;
 
 GLFWwindow *window;
@@ -106,6 +110,10 @@ struct SceneMaterial
 };
 std::vector<SceneMaterial*> materials; // = std::vector<SceneMaterial>(0);
 
+struct UboDataDynamic {
+	glm::mat4 *model = nullptr;
+} uboDataDynamic;
+size_t dynamicAlignment;
 // Stores per-mesh Vulkan resources
 struct ScenePart
 {
@@ -115,6 +123,8 @@ struct ScenePart
 
 	// Pointer to the material used by this mesh
 	SceneMaterial *material = nullptr;
+
+	glm::mat4 model;
 };
 std::vector<ScenePart> meshes; // = std::vector<ScenePart>(0);
 
@@ -502,7 +512,9 @@ void createDescriptorSetLayout()
 	std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings;
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
 
+
 	// Set 0: Scene matrices
+	setLayoutBindings.clear();
 	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding;
 	descriptorSetLayoutBinding.binding = 0; //0 == MVP, see shader.vert
 	descriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -520,7 +532,29 @@ void createDescriptorSetLayout()
 
 	VkResult result = vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayouts.scene);
 	ASSERT_VULKAN(result);
-	
+
+
+	// Set 0: Model matrices (dynamic ubo)
+	setLayoutBindings.clear();
+	VkDescriptorSetLayoutBinding dynUBODescriptorSetLayoutBinding;
+	dynUBODescriptorSetLayoutBinding.binding = 1; 
+	dynUBODescriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	descriptorSetLayoutBinding.descriptorCount = 1;
+	dynUBODescriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	dynUBODescriptorSetLayoutBinding.pImmutableSamplers = nullptr;
+
+	setLayoutBindings.push_back(dynUBODescriptorSetLayoutBinding);
+
+	descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	descriptorSetLayoutCreateInfo.pNext = nullptr;
+	descriptorSetLayoutCreateInfo.flags = 0;
+	descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(setLayoutBindings.size());
+	descriptorSetLayoutCreateInfo.pBindings = setLayoutBindings.data();
+
+	result = vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayouts.scene);
+	ASSERT_VULKAN(result);
+		
+
 	// Set 1: Material data
 	setLayoutBindings.clear();
 	VkDescriptorSetLayoutBinding samplerDescriptorSetLayoutBinding;
@@ -531,6 +565,12 @@ void createDescriptorSetLayout()
 	samplerDescriptorSetLayoutBinding.pImmutableSamplers = nullptr;
 
 	setLayoutBindings.push_back(samplerDescriptorSetLayoutBinding);
+
+	descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	descriptorSetLayoutCreateInfo.pNext = nullptr;
+	descriptorSetLayoutCreateInfo.flags = 0;
+	descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(setLayoutBindings.size());
+	descriptorSetLayoutCreateInfo.pBindings = setLayoutBindings.data();
 
 	result = vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, nullptr, &descriptorSetLayouts.material);
 	ASSERT_VULKAN(result);
@@ -796,7 +836,7 @@ void createIndexBuffer() {
 }
 
 void createUniformBuffer() {
-	VkDeviceSize bufferSize = sizeof(uniformData);
+	VkDeviceSize bufferSize = sizeof(uniformDataVS);
 	createBuffer(device, physicalDevices[0], bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniformBuffer, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBufferMemory);
 }
 
@@ -879,10 +919,9 @@ void createDescriptorSet() {
 
 	std::vector<VkWriteDescriptorSet> writeDescriptorSets;
 	// Binding 0 : Vertex shader uniform buffer
-	VkDescriptorBufferInfo descriptorUniformBufferInfo;
-	descriptorUniformBufferInfo.buffer = uniformBuffer;
-	descriptorUniformBufferInfo.offset = 0;
-	descriptorUniformBufferInfo.range = sizeof(uniformData);
+	uniformBuffers.view.descriptor.buffer = uniformBuffers.view.buffer;
+	uniformBuffers.view.descriptor.offset = 0;
+	uniformBuffers.view.descriptor.range = sizeof(uniformDataVS);
 	VkWriteDescriptorSet descriptorWrite;
 	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorWrite.pNext = nullptr;
@@ -892,10 +931,29 @@ void createDescriptorSet() {
 	descriptorWrite.descriptorCount = 1;
 	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	descriptorWrite.pImageInfo = nullptr;
-	descriptorWrite.pBufferInfo = &descriptorUniformBufferInfo;
+	descriptorWrite.pBufferInfo = &uniformBuffers.view.descriptor;
 	descriptorWrite.pTexelBufferView = nullptr;
 
 	writeDescriptorSets.push_back(descriptorWrite);
+
+	// Binding 1 : Vertex shader dynamic uniform buffer
+	uniformBuffers.dynamic.descriptor.buffer = uniformBuffers.dynamic.buffer;
+	uniformBuffers.dynamic.descriptor.offset = 0;
+	uniformBuffers.dynamic.descriptor.range = sizeof(uboDataDynamic);
+	VkWriteDescriptorSet descriptorDynWrite;
+	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite.pNext = nullptr;
+	descriptorWrite.dstSet = descriptorSetScene;
+	descriptorWrite.dstBinding = 0;
+	descriptorWrite.dstArrayElement = 0;
+	descriptorWrite.descriptorCount = 1;
+	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	descriptorWrite.pImageInfo = nullptr;
+	descriptorWrite.pBufferInfo = &uniformBuffers.dynamic.descriptor;
+	descriptorWrite.pTexelBufferView = nullptr;
+
+	writeDescriptorSets.push_back(descriptorDynWrite);
+
 
 	vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
 }
@@ -948,6 +1006,7 @@ void recordCommandBuffers() {
 		vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, &vertexBuffer, offsets);
 		vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
+		int meshIdx = 0;
 		for (auto mesh : meshes) 
 		{
 			//if ((renderSingleScenePart) && (i != scenePartIndex))
@@ -976,7 +1035,14 @@ void recordCommandBuffers() {
 				sizeof(SceneMaterialProperties),
 				&mesh.material->properties);
 
+			// Render multiple objects using different model matrices by dynamically offsetting into one uniform buffer
+			// One dynamic offset per dynamic descriptor to offset into the ubo containing all model matrices
+			uint32_t dynamicOffset = meshIdx * static_cast<uint32_t>(dynamicAlignment);
+			// Bind the descriptor set for rendering a mesh using the dynamic offset
+			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[0], 1, &dynamicOffset);
+
 			vkCmdDrawIndexed(commandBuffers[i], mesh.indexCount, 1, mesh.indexBase, 0, 0);
+			meshIdx++;
 		}
 		
 		vkCmdEndRenderPass(commandBuffers[i]);
@@ -1165,7 +1231,8 @@ void updateMVP() {
 		);
 	projection[1][1] *= -1;
 
-	uniformData.MVP = projection * view * model;
+	uniformDataVS.projection = projection;
+	uniformDataVS.view = view;
 
 
 	/*if (attachLight)
@@ -1173,13 +1240,13 @@ void updateMVP() {
 		scene->uniformData.lightPos = glm::vec4(-camera.position, 1.0f);
 	}*/
 
-	uniformData.projection = glm::mat4(1.0f); // camera.matrices.perspective;
-	uniformData.view = glm::mat4(1.0f); // camera.matrices.view;
-	uniformData.model = glm::mat4(1.0f);
+	uniformDataVS.projection = glm::mat4(1.0f); // camera.matrices.perspective;
+	uniformDataVS.view = glm::mat4(1.0f); // camera.matrices.view;
+	*(uboDataDynamic.model) = glm::mat4(1.0f);
 
 	void* data;
-	vkMapMemory(device, uniformBufferMemory, 0, sizeof(uniformData), 0, &data); 
-	memcpy(data, &uniformData, sizeof(uniformData));
+	vkMapMemory(device, uniformBufferMemory, 0, sizeof(uniformDataVS), 0, &data); 
+	memcpy(data, &uniformDataVS, sizeof(uniformDataVS));
 	vkUnmapMemory(device, uniformBufferMemory); 
 }
 

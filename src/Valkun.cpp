@@ -30,6 +30,7 @@
 
 VkInstance	instance; 
 std::vector<VkPhysicalDevice> physicalDevices;
+VkPhysicalDeviceProperties physicalDeviceProperties;
 VkSurfaceKHR surface; 
 VkDevice	device;
 VkSwapchainKHR swapchain = VK_NULL_HANDLE; 
@@ -149,18 +150,17 @@ std::vector<uint32_t> indices = {
 //////// MISC HELPERS ////////
 
 void printStats(VkPhysicalDevice &device) {
-	VkPhysicalDeviceProperties properties; 
-	vkGetPhysicalDeviceProperties(device, &properties); 
+	vkGetPhysicalDeviceProperties(device, &physicalDeviceProperties); 
 
 	std::cout << std::endl; 
-	std::cout << "Name:                     " << properties.deviceName << std::endl; 
-	uint32_t apiVer = properties.apiVersion; 
+	std::cout << "Name:                     " << physicalDeviceProperties.deviceName << std::endl; 
+	uint32_t apiVer = physicalDeviceProperties.apiVersion; 
 	std::cout << "API Version:              " << VK_VERSION_MAJOR(apiVer) << "." << VK_VERSION_MINOR(apiVer) << "." << VK_VERSION_PATCH(apiVer) << std::endl; 
-	std::cout << "Driver Version:           " << properties.driverVersion << std::endl; 
-	std::cout << "Vendor ID:                " << properties.vendorID << std::endl; 
-	std::cout << "Device ID:                " << properties.deviceID << std::endl; 
-	std::cout << "Device Type               " << properties.deviceType << std::endl; 
-	std::cout << "discreteQueuePriorities:  " << properties.limits.discreteQueuePriorities << std::endl; 
+	std::cout << "Driver Version:           " << physicalDeviceProperties.driverVersion << std::endl; 
+	std::cout << "Vendor ID:                " << physicalDeviceProperties.vendorID << std::endl; 
+	std::cout << "Device ID:                " << physicalDeviceProperties.deviceID << std::endl; 
+	std::cout << "Device Type               " << physicalDeviceProperties.deviceType << std::endl; 
+	std::cout << "discreteQueuePriorities:  " << physicalDeviceProperties.limits.discreteQueuePriorities << std::endl; 
 
 	VkPhysicalDeviceFeatures features; 
 	vkGetPhysicalDeviceFeatures(device, &features); 
@@ -274,6 +274,30 @@ std::vector<VkPhysicalDevice> getAllPhysicalDevices() {
 	ASSERT_VULKAN(result);
 
 	return physicalDevices;
+}
+
+// Wrapper functions for aligned memory allocation
+// There is currently no standard for this in C++ that works across all platforms and vendors, so we abstract this
+void* alignedAlloc(size_t size, size_t alignment)
+{
+	void *data = nullptr;
+#if defined(_MSC_VER) || defined(__MINGW32__)
+	data = _aligned_malloc(size, alignment);
+#else 
+	int res = posix_memalign(&data, alignment, size);
+	if (res != 0)
+		data = nullptr;
+#endif
+	return data;
+}
+
+void alignedFree(void* data)
+{
+#if	defined(_MSC_VER) || defined(__MINGW32__)
+	_aligned_free(data);
+#else 
+	free(data);
+#endif
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -824,10 +848,47 @@ void createIndexBuffer() {
 	createAndUploadBuffer(device, physicalDevices[0], queue, commandPool, indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexBuffer, indexBufferDeviceMemory);
 }
 
+void updateUniformBuffers();
+void updateDynamicUniformBuffer(bool force);
 void createUniformBuffer() {
 	//https://github.com/SaschaWillems/Vulkan/blob/master/examples/dynamicuniformbuffer/dynamicuniformbuffer.cpp l.410-460 ref
-	VkDeviceSize bufferSize = sizeof(uniformDataVS);
-	createBuffer(device, physicalDevices[0], bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniformBuffer, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBufferMemory);
+	//VkDeviceSize bufferSize = sizeof(uniformDataVS);
+	//createBuffer(device, physicalDevices[0], bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniformBuffer, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBufferMemory);
+
+	// Allocate data for the dynamic uniform buffer object
+	// We allocate this manually as the alignment of the offset differs between GPUs
+
+	// Calculate required alignment based on minimum device offset alignment
+	size_t minUboAlignment = physicalDeviceProperties.limits.minUniformBufferOffsetAlignment;
+	dynamicAlignment = sizeof(uboDataDynamic); //(glm::mat4);
+	if (minUboAlignment > 0) {
+		dynamicAlignment = (dynamicAlignment + minUboAlignment - 1) & ~(minUboAlignment - 1);
+	}
+
+	size_t bufferSize = meshes.size() * dynamicAlignment;
+
+	uboDataDynamic.model = (glm::mat4*)alignedAlloc(bufferSize, dynamicAlignment);
+	assert(uboDataDynamic.model);
+
+	std::cout << "minUniformBufferOffsetAlignment = " << minUboAlignment << std::endl;
+	std::cout << "dynamicAlignment = " << dynamicAlignment << std::endl;
+
+	// Vertex shader uniform buffer block
+
+	// Static shared uniform buffer object with projection and view matrix
+	VkResult result = createBuffer2(device, physicalDevices[0], sizeof(uniformDataVS), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, &uniformBuffers.view, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	ASSERT_VULKAN(result); 
+
+	// Uniform buffer object with per-object matrices
+	result = createBuffer2(device, physicalDevices[0], sizeof(uboDataDynamic), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, &uniformBuffers.dynamic, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+	ASSERT_VULKAN(result);
+
+	// Map persistent
+	ASSERT_VULKAN(uniformBuffers.view.map());
+	ASSERT_VULKAN(uniformBuffers.dynamic.map());
+
+	updateUniformBuffers();
+	updateDynamicUniformBuffer(true);
 }
 
 void createDescriptorPool() {
@@ -939,7 +1000,7 @@ void createDescriptorSet() {
 	descriptorDynWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorDynWrite.pNext = nullptr;
 	descriptorDynWrite.dstSet = descriptorSetScene;
-	descriptorDynWrite.dstBinding = 0;
+	descriptorDynWrite.dstBinding = 1;
 	descriptorDynWrite.dstArrayElement = 0;
 	descriptorDynWrite.descriptorCount = 1;
 	descriptorDynWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -997,7 +1058,7 @@ void recordCommandBuffers() {
 		scissor.extent = { width, height }; 
 		vkCmdSetScissor(commandBuffers[i], 0, 1, &scissor); 
 
-		VkDeviceSize offsets[] = { 0 };
+		VkDeviceSize offsets[1] = { 0 };
 		vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, &vertexBuffer, offsets);
 		vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
@@ -1019,7 +1080,7 @@ void recordCommandBuffers() {
 			descriptorSets[1] = mesh.material->descriptorSet;
 
 			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, *mesh.material->pipeline);
-			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
+			//vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
 
 			// Pass material properies via push constants
 			vkCmdPushConstants(
@@ -1199,57 +1260,57 @@ void drawFrame() {
 	ASSERT_VULKAN(result); 
 }
 
+void updateUniformBuffers()
+{
+	// Fixed ubo with projection and view matrices
+	uniformDataVS.projection = glm::perspective(
+		glm::radians(60.0f),
+		width / (float)height,
+		0.01f, 10.0f
+	);
+	uniformDataVS.projection[1][1] *= -1;
+
+	uniformDataVS.view = glm::lookAt(
+		eyePos,
+		eyePos + lookDir,
+		glm::vec3(0.0f, 0.0f, 1.0f)
+	);
+
+	memcpy(uniformBuffers.view.mapped, &uniformDataVS, sizeof(uniformDataVS));
+}
+
 auto gameStartTime = std::chrono::high_resolution_clock::now(); 
-void updateMVP() {
+void updateDynamicUniformBuffer(bool force = false) {
 	auto frameTime = std::chrono::high_resolution_clock::now(); 
 
 	float timeSinceStart = std::chrono::duration_cast<std::chrono::milliseconds>(frameTime - gameStartTime).count() / 1000.0f;
 
-	glm::mat4 model = 
-		glm::translate(
-			glm::rotate(
-				glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f)), 
-				timeSinceStart * glm::radians(30.0f), 
-				glm::vec3(0.0f, 0.0f, 1.0f)), 
-			glm::vec3(0, 0, -2.0f));
-	glm::mat4 view = 
-		glm::lookAt(
-			eyePos, 
-			eyePos + lookDir, 
-			glm::vec3(0.0f, 0.0f, 1.0f)
-		); 
-	glm::mat4 projection = 
-		glm::perspective(
-			glm::radians(60.0f), 
-			width / (float)height, 
-			0.01f, 10.0f
-		);
-	projection[1][1] *= -1;
+	for (size_t i = 0; i < meshes.size(); i++) {
+		// Aligned offset
+		glm::mat4* modelMat = (glm::mat4*)(((uint64_t)uboDataDynamic.model + (i * dynamicAlignment)));
 
-	uniformDataVS.projection = projection;
-	uniformDataVS.view = view;
+		// Update matrices
+		glm::vec3 pos = glm::vec3(i, i, i);
+		*modelMat = glm::translate(glm::mat4(1.0f), pos);
+	}
 
-
-	/*if (attachLight)
-	{
-		scene->uniformData.lightPos = glm::vec4(-camera.position, 1.0f);
-	}*/
-
-	uniformDataVS.projection = glm::mat4(1.0f); // camera.matrices.perspective;
-	uniformDataVS.view = glm::mat4(1.0f); // camera.matrices.view;
-	*(uboDataDynamic.model) = glm::mat4(1.0f);
-
-	void* data;
-	vkMapMemory(device, uniformBufferMemory, 0, sizeof(uniformDataVS), 0, &data); 
-	memcpy(data, &uniformDataVS, sizeof(uniformDataVS));
-	vkUnmapMemory(device, uniformBufferMemory); 
+	memcpy(uniformBuffers.dynamic.mapped, uboDataDynamic.model, uniformBuffers.dynamic.size);
+	// Flush to make changes visible to the host 
+	VkMappedMemoryRange memoryRange;
+	memoryRange.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+	memoryRange.pNext = nullptr;
+	memoryRange.memory = uniformBuffers.dynamic.memory;
+	memoryRange.offset = 0;
+	memoryRange.size = uniformBuffers.dynamic.size;
+	vkFlushMappedMemoryRanges(device, 1, &memoryRange);
 }
 
 void gameLoop() {
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents(); 
 
-		updateMVP(); 
+		//updateMVP();
+		updateUniformBuffers();
 
 		drawFrame(); 
 	}

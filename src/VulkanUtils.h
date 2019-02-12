@@ -14,6 +14,8 @@
 			__debugbreak();\
 		}
 
+#include <VulkanBuffer.h>
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////// GLOBAL VARS ////////
 
@@ -87,7 +89,83 @@ void createBuffer(VkDevice device, VkPhysicalDevice physicalDevice, VkDeviceSize
 	result = vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &deviceMemory);
 	ASSERT_VULKAN(result);
 
+	/*
+	buffer->alignment = memReqs.alignment;
+	buffer->size = memAlloc.allocationSize;
+	buffer->usageFlags = usageFlags;
+	buffer->memoryPropertyFlags = memoryPropertyFlags;
+
+	// If a pointer to the buffer data has been passed, map the buffer and copy over the data
+	if (data != nullptr)
+	{
+		VK_CHECK_RESULT(buffer->map());
+		memcpy(buffer->mapped, data, size);
+		if ((memoryPropertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
+			buffer->flush();
+
+		buffer->unmap();
+	}
+
+	// Initialize a default descriptor that covers the whole buffer size
+	buffer->setupDescriptor();
+
+	// Attach the memory to the buffer object
+	return buffer->bind();
+	*/
+
 	vkBindBufferMemory(device, buffer, deviceMemory, 0);
+}
+
+VkResult createBuffer2(VkDevice device, VkPhysicalDevice physicalDevice, VkDeviceSize deviceSize, VkBufferUsageFlags bufferUsageFlags, vks::Buffer *buffer, VkMemoryPropertyFlags memoryPropertyFlags) {
+	buffer->device = device;
+	
+	VkBufferCreateInfo bufferCreateInfo;
+	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCreateInfo.pNext = nullptr;
+	bufferCreateInfo.flags = 0;
+	bufferCreateInfo.size = deviceSize;
+	bufferCreateInfo.usage = bufferUsageFlags;
+	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	bufferCreateInfo.queueFamilyIndexCount = 0;
+	bufferCreateInfo.pQueueFamilyIndices = nullptr;
+
+	VkResult result = vkCreateBuffer(device, &bufferCreateInfo, nullptr, &buffer->buffer);
+	ASSERT_VULKAN(result);
+
+	VkMemoryRequirements memoryRequirements;
+	vkGetBufferMemoryRequirements(device, buffer->buffer, &memoryRequirements);
+
+	VkMemoryAllocateInfo memoryAllocateInfo;
+	memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memoryAllocateInfo.pNext = nullptr;
+	memoryAllocateInfo.allocationSize = memoryRequirements.size;
+	memoryAllocateInfo.memoryTypeIndex = findMemoryTypeIndex(physicalDevice, memoryRequirements.memoryTypeBits, memoryPropertyFlags);
+
+	result = vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &buffer->memory);
+	ASSERT_VULKAN(result);
+
+	buffer->alignment = memoryRequirements.alignment;
+	buffer->size = memoryAllocateInfo.allocationSize;
+	buffer->usageFlags = bufferUsageFlags;
+	buffer->memoryPropertyFlags = memoryPropertyFlags;
+
+	// If a pointer to the buffer data has been passed, map the buffer and copy over the data
+	/*if (data != nullptr)
+	{
+		VK_CHECK_RESULT(buffer->map());
+		memcpy(buffer->mapped, data, size);
+		if ((memoryPropertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
+		buffer->flush();
+
+		buffer->unmap();
+	}*/
+
+	// Initialize a default descriptor that covers the whole buffer size
+	buffer->setupDescriptor();
+
+	// Attach the memory to the buffer object
+	//return buffer->bind();
+	return vkBindBufferMemory(device, buffer->buffer, buffer->memory, 0);
 }
 
 VkCommandBuffer startSingleTimeCommandBuffer(VkDevice device, VkCommandPool commandPool) {

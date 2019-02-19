@@ -50,8 +50,6 @@ VkBuffer vertexBuffer;
 VkDeviceMemory vertexBufferDeviceMemory;
 VkBuffer indexBuffer;
 VkDeviceMemory indexBufferDeviceMemory;
-VkBuffer uniformBuffer;
-VkDeviceMemory uniformBufferMemory;
 struct {
 	vks::Buffer view;
 	vks::Buffer dynamic;
@@ -90,15 +88,16 @@ glm::vec3 lookDir = glm::vec3(1.0f, 0.0f, 0.0f);
 // Will be passed to the shaders using push constant
 struct SceneMaterialProperties
 {
-	glm::vec4 ambient;
-	glm::vec4 diffuse;
-	glm::vec4 specular;
-	float opacity;
+	glm::vec4 ambient = glm::vec4(0.01f, 0.0f, 0.02f, 1.0f);
+	glm::vec4 diffuse = glm::vec4(1.0f);
+	glm::vec4 specular = glm::vec4(1.0f);
+	float opacity = 1.0f;
 };
 
 // Stores info on the materials used in the scene
 struct SceneMaterial
 {
+	// Material name
 	std::string name;
 	// Material properties
 	SceneMaterialProperties properties;
@@ -315,7 +314,7 @@ void createInstance() {
 	appInfo.apiVersion = VK_API_VERSION_1_0;
 
 	const std::vector<const char*> validationLayers = {
-		"VK_LAYER_LUNARG_standard_validation"
+		//"VK_LAYER_LUNARG_standard_validation"
 	};
 
 	uint32_t numGlfwExtensions = 0;
@@ -850,10 +849,8 @@ void createIndexBuffer() {
 
 void updateUniformBuffers();
 void updateDynamicUniformBuffer(bool force);
-void createUniformBuffer() {
+void createUniformBuffers() {
 	//https://github.com/SaschaWillems/Vulkan/blob/master/examples/dynamicuniformbuffer/dynamicuniformbuffer.cpp l.410-460 ref
-	//VkDeviceSize bufferSize = sizeof(uniformDataVS);
-	//createBuffer(device, physicalDevices[0], bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uniformBuffer, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBufferMemory);
 
 	// Allocate data for the dynamic uniform buffer object
 	// We allocate this manually as the alignment of the offset differs between GPUs
@@ -921,7 +918,7 @@ void createDescriptorPool() {
 	ASSERT_VULKAN(result); 
 }
 
-void createDescriptorSet() {
+void createDescriptorSets() {
 	// Material descriptor sets
 	for (size_t i = 0; i < materials.size(); i++)
 	{
@@ -1062,12 +1059,9 @@ void recordCommandBuffers() {
 		vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, &vertexBuffer, offsets);
 		vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-		int meshIdx = 0;
+		int meshIdx = 0; 
 		for (auto mesh : meshes) 
 		{
-			//if ((renderSingleScenePart) && (i != scenePartIndex))
-			//	continue;
-
 			// We will be using multiple descriptor sets for rendering
 			// In GLSL the selection is done via the set and binding keywords
 			// VS: layout (set = 0, binding = 0) uniform UBO;
@@ -1080,7 +1074,11 @@ void recordCommandBuffers() {
 			descriptorSets[1] = mesh.material->descriptorSet;
 
 			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, *mesh.material->pipeline);
-			//vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
+			// Render multiple objects using different model matrices by dynamically offsetting into one uniform buffer
+			// One dynamic offset per dynamic descriptor to offset into the ubo containing all model matrices
+			uint32_t dynamicOffset = meshIdx * static_cast<uint32_t>(dynamicAlignment);
+			// Bind the descriptor set for rendering a mesh using the dynamic offset
+			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 1, &dynamicOffset);
 
 			// Pass material properies via push constants
 			vkCmdPushConstants(
@@ -1090,13 +1088,7 @@ void recordCommandBuffers() {
 				0,
 				sizeof(SceneMaterialProperties),
 				&mesh.material->properties);
-
-			// Render multiple objects using different model matrices by dynamically offsetting into one uniform buffer
-			// One dynamic offset per dynamic descriptor to offset into the ubo containing all model matrices
-			uint32_t dynamicOffset = meshIdx * static_cast<uint32_t>(dynamicAlignment);
-			// Bind the descriptor set for rendering a mesh using the dynamic offset
-			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 1, &dynamicOffset);
-
+			
 			vkCmdDrawIndexed(commandBuffers[i], mesh.indexCount, 1, mesh.indexBase, 0, 0);
 			meshIdx++;
 		}
@@ -1210,18 +1202,15 @@ void startVulkan() {
 	createFramebuffers(); 
 	createCommandBuffers();
 
-	for (int i = 0; i < 100; i++)
-	{
-		loadAsset_MeshAndTex("Resources/Models/tiger_i.obj", "Resources/Textures/tiger_i.png");
-	}
-	//loadAsset_MeshAndTex("Resources/Models/tiger_i.obj", "Resources/Textures/tiger_i.png");
-	//loadAsset_MeshAndTex("Resources/Models/lp_tree.obj", "Resources/Textures/tex.png");
+	loadAsset_MeshAndTex("Resources/Models/tiger_i.obj", "Resources/Textures/tiger_i.png");
+	loadAsset_MeshAndTex("Resources/Models/tiger_i.obj", "Resources/Textures/tiger_i.png");
+	loadAsset_MeshAndTex("Resources/Models/lp_tree.obj", "Resources/Textures/tex.png");
 
 	createVertexBuffer();
 	createIndexBuffer(); 
-	createUniformBuffer(); 
+	createUniformBuffers(); 
 	createDescriptorPool(); 
-	createDescriptorSet();
+	createDescriptorSets();
 	recordCommandBuffers();
 	createSemaphores(); 
 }
@@ -1290,21 +1279,13 @@ void updateDynamicUniformBuffer(bool force = false) {
 
 	float timeSinceStart = std::chrono::duration_cast<std::chrono::milliseconds>(frameTime - gameStartTime).count() / 1000.0f;
 
-	int gridCount = 0, gridX = 0, gridY = 0, gridZ = 0;
 	for (size_t i = 0; i < meshes.size(); i++) {
 		// Aligned offset
 		glm::mat4* modelMat = (glm::mat4*)(((uint64_t)uboDataDynamic.model + (i * dynamicAlignment)));
 
 		// Update matrices
-		glm::vec3 pos = glm::vec3(gridX * 5, gridY * 5, gridZ * 5);
+		glm::vec3 pos = glm::vec3(i * 5, i * 5, i * 5);
 		*modelMat = glm::translate(glm::mat4(1.0f), pos);
-
-		gridCount++;
-		gridX = gridCount % 10;
-		if (gridX > 0) {
-			gridY = (gridCount / gridX) % 10;
-			gridZ = (gridCount / (gridX * gridY)) % 10;
-		}
 	}
 
 	memcpy(uniformBuffers.dynamic.mapped, uboDataDynamic.model, uniformBuffers.dynamic.size);
@@ -1337,8 +1318,8 @@ void shutdownVulkan() {
 	vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.material, nullptr);
 	vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.scene, nullptr);
 	vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-	vkFreeMemory(device, uniformBufferMemory, nullptr);
-	vkDestroyBuffer(device, uniformBuffer, nullptr); 
+	//vkFreeMemory(device, uniformBufferMemory, nullptr);
+	//vkDestroyBuffer(device, uniformBuffer, nullptr); 
 
 	vkFreeMemory(device, indexBufferDeviceMemory, nullptr);
 	vkDestroyBuffer(device, indexBuffer, nullptr);
